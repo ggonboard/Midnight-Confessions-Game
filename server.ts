@@ -93,11 +93,49 @@ Visual Aesthetic:
     }
   });
 
+  // Shared Case Storage: ensures everyone entering the same code accesses the exact same case
+  const casesStore = new Map<string, any>();
+
+  app.get('/api/cases/:code', (req, res) => {
+    const code = req.params.code.trim().toUpperCase().replace(/^CASE-/, '');
+    const caseData = casesStore.get(code);
+    if (!caseData) {
+      return res.status(404).json({ error: 'Case not found', code });
+    }
+    return res.json({ success: true, code, caseData });
+  });
+
+  app.post('/api/cases', (req, res) => {
+    const { code, caseData } = req.body;
+    if (!code || !caseData) {
+      return res.status(400).json({ error: 'Code and caseData are required' });
+    }
+    const normalizedCode = String(code).trim().toUpperCase().replace(/^CASE-/, '');
+    casesStore.set(normalizedCode, {
+      ...caseData,
+      updatedAt: Date.now(),
+    });
+    return res.json({ success: true, code: normalizedCode });
+  });
+
+  app.post('/api/cases/:code/unlock', (req, res) => {
+    const code = req.params.code.trim().toUpperCase().replace(/^CASE-/, '');
+    const caseData = casesStore.get(code);
+    if (caseData) {
+      caseData.roomUnlocked = true;
+      caseData.unlockedAt = Date.now();
+      casesStore.set(code, caseData);
+      return res.json({ success: true, code, roomUnlocked: true });
+    }
+    return res.json({ success: true, code, roomUnlocked: true, note: 'Case will store unlocked flag upon sync' });
+  });
+
   // Health check endpoint
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
       hasApiKey: Boolean(process.env.GEMINI_API_KEY),
+      activeCasesCount: casesStore.size,
     });
   });
 

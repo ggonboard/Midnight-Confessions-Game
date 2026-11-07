@@ -23,8 +23,14 @@ import {
   Users,
   BookOpen,
   Scale,
+  Phone,
+  Clock,
+  Zap,
+  CheckCircle2,
+  KeyRound,
 } from 'lucide-react';
 import { NoirSpotPortrait, NoirSpotLockedChamber, NoirSpotStaff } from './components/NoirSpotIllustrations';
+import { ClassicSuspectPortrait } from './components/ClassicSuspectPortrait';
 
 // Declarations for global scripts loaded via CDN
 declare global {
@@ -355,9 +361,31 @@ const REAL_WEAPONS_FALLBACK: WeaponData[] = [
   { name: 'Arsenic Laced Tea', category: 'Poison', material: 'Liquid', size: 'Heavy' },
 ];
 
-// --- VINTAGE NOIR SUSPECT SPOT PORTRAIT COMPONENT ---
+// Fallback connections parsed directly from Google Sheet CSV
+const REAL_CONNECTIONS_FALLBACK: Record<string, RoomConnection> = {
+  'LOUNGE': { floor: 'FIRST', NORTH: 'CELLAR', SOUTH: 'LIBRARY', WEST: 'DINING HALL' },
+  'LIBRARY': { floor: 'FIRST', NORTH: 'LOUNGE', SOUTH: 'COURTYARD', WEST: 'ENTRANCE HALL' },
+  'DINING HALL': { floor: 'FIRST', NORTH: 'GARDEN', SOUTH: 'KITCHEN', EAST: 'LOUNGE' },
+  'CELLAR': { floor: 'FIRST', SOUTH: 'LOUNGE', EAST: 'GARDEN' },
+  'GARDEN': { floor: 'FIRST', SOUTH: 'DINING HALL', EAST: 'STAIRCASE', WEST: 'CELLAR' },
+  'KITCHEN': { floor: 'FIRST', NORTH: 'DINING HALL', EAST: 'ENTRANCE HALL' },
+  'COURTYARD': { floor: 'FIRST', NORTH: 'LIBRARY', EAST: 'ENTRANCE HALL' },
+  'ENTRANCE HALL': { floor: 'FIRST', NORTH: 'STAIRCASE', SOUTH: 'COURTYARD', EAST: 'LIBRARY', WEST: 'KITCHEN' },
+  'STAIRCASE': { floor: 'FIRST', NORTH: 'HALLWAY', SOUTH: 'ENTRANCE HALL', WEST: 'GARDEN' },
+  'BATHROOM': { floor: 'SECOND', NORTH: 'SECRET CHAMBER', SOUTH: 'BEDROOM', WEST: 'STORAGE ROOM' },
+  'BEDROOM': { floor: 'SECOND', NORTH: 'BATHROOM', WEST: 'HALLWAY' },
+  'SECRET CHAMBER': { floor: 'SECOND', SOUTH: 'BATHROOM' },
+  'BALCONY': { floor: 'SECOND', SOUTH: 'HALLWAY', WEST: 'ATTIC' },
+  'STORAGE ROOM': { floor: 'SECOND', NORTH: 'ATTIC', SOUTH: 'STUDY', EAST: 'BATHROOM' },
+  'ATTIC': { floor: 'SECOND', SOUTH: 'STORAGE ROOM', EAST: 'BALCONY' },
+  'STUDY': { floor: 'SECOND', NORTH: 'STORAGE ROOM', EAST: 'HALLWAY' },
+  'HALLWAY': { floor: 'SECOND', NORTH: 'BALCONY', SOUTH: 'STAIRCASE', EAST: 'BEDROOM', WEST: 'STUDY' },
+};
+
+// --- CLASSIC VINTAGE SUSPECT PORTRAIT COMPONENT ---
 function SuspectAvatar({
   suspect,
+  customImage,
   size = 'md',
 }: {
   suspect: SuspectData;
@@ -368,7 +396,7 @@ function SuspectAvatar({
 }) {
   return (
     <div className="flex flex-col items-center">
-      <NoirSpotPortrait
+      <ClassicSuspectPortrait
         name={suspect.name}
         gender={suspect.gender}
         age={suspect.age}
@@ -376,8 +404,9 @@ function SuspectAvatar({
         clothing={suspect.clothing}
         accessory={suspect.accessory}
         size={size}
+        customImage={customImage}
       />
-      <span className="text-[9px] font-serif font-bold text-[#e6d8b8] tracking-wider truncate max-w-[80px] sm:max-w-[100px] mt-1 text-center block">
+      <span className="text-[10px] font-serif font-bold text-stone-900 tracking-wider truncate max-w-[80px] sm:max-w-[100px] mt-1 text-center block">
         {suspect.name}
       </span>
     </div>
@@ -406,6 +435,7 @@ export default function App() {
   const [playerScore, setPlayerScore] = useState<number>(0);
   const [playerLocation, setPlayerLocation] = useState<string>('ENTRANCE HALL');
   const [accuseChances, setAccuseChances] = useState<number>(2);
+  const [isRoomUnlocked, setIsRoomUnlocked] = useState<boolean>(false);
 
   // Modals state
   const [modalModeSelect, setModalModeSelect] = useState(false);
@@ -462,6 +492,9 @@ export default function App() {
     scoreDeducted: number;
     fundsGranted: number;
   } | null>(null);
+  const [modalCallFord, setModalCallFord] = useState(false);
+  const [topNotification, setTopNotification] = useState<{ id: number; title: string; message: string } | null>(null);
+  const [fordAdviceResult, setFordAdviceResult] = useState<string | null>(null);
   const [modalBiRoundReport, setModalBiRoundReport] = useState<{
     open: boolean;
     completedRound: number;
@@ -536,6 +569,30 @@ export default function App() {
   // Gear & abilities
   const [hasSabotageTrap, setHasSabotageTrap] = useState(false);
   const [hasPoliceTape, setHasPoliceTape] = useState(false);
+  const [sabotageTrapRoom, setSabotageTrapRoom] = useState<string | null>(null);
+  const [policeTapeRoom, setPoliceTapeRoom] = useState<string | null>(null);
+  const [pendingJudgeReport, setPendingJudgeReport] = useState<{
+    room: string;
+    entity: string;
+    submittedRound: number;
+  } | null>(null);
+  const [modalAlfredTurn, setModalAlfredTurn] = useState<{
+    open: boolean;
+    round: number;
+    fromRoom: string;
+    toRoom: string;
+    trapTriggered: boolean;
+    trapMsg: string;
+    tapeTriggered: boolean;
+    tapeMsg: string;
+    warrantFiled: boolean;
+    warrantMsg: string;
+    judgeResult: {
+      approved: boolean;
+      room: string;
+      desc: string;
+    } | null;
+  } | null>(null);
   const [notebookLogs, setNotebookLogs] = useState<string[]>([]);
   const [aiStats, setAiStats] = useState<any>({ score: 0, cleared: 0, scans: 0, tokens: 0, loc: 'Unknown', rank: 0, rep: 0 });
 
@@ -551,7 +608,7 @@ export default function App() {
     locations: REAL_LOCATIONS_FALLBACK,
     weapons: REAL_WEAPONS_FALLBACK,
     suspects: REAL_SUSPECTS,
-    roomConnections: {},
+    roomConnections: REAL_CONNECTIONS_FALLBACK,
     solution: null,
     allCleanTraits: new Set(),
   });
@@ -892,6 +949,24 @@ export default function App() {
       const savedScore = parseInt(localStorage.getItem('playerScore_' + seed) || '0');
       setPlayerScore(savedScore);
 
+      initMysteryState(seed);
+
+      const isUnlocked = localStorage.getItem('roomUnlocked_' + seed) === 'true';
+      setIsRoomUnlocked(isUnlocked);
+
+      // Background sync from shared case server
+      fetch('/api/cases/' + seed)
+        .then(r => (r.ok ? r.json() : null))
+        .then(data => {
+          if (data && data.caseData) {
+            if (data.caseData.roomUnlocked) {
+              setIsRoomUnlocked(true);
+              localStorage.setItem('roomUnlocked_' + seed, 'true');
+            }
+          }
+        })
+        .catch(() => {});
+
       const loc = localStorage.getItem('myStartLoc_' + seed) || 'ENTRANCE HALL';
       setPlayerLocation(loc);
 
@@ -906,7 +981,6 @@ export default function App() {
       const currentAILoc = localStorage.getItem('aiLoc_' + seed) || 'LIBRARY';
       setAiStats({ ...ai, loc: currentAILoc });
 
-      initMysteryState(seed);
       setActiveView('view-main');
     } else {
       setActiveView('view-start');
@@ -919,14 +993,47 @@ export default function App() {
     const cachedSetup = localStorage.getItem('caseSetupData_' + seed);
 
     if (cachedSolution && cachedSetup) {
-      gameDataRef.current.solution = JSON.parse(cachedSolution);
-      return;
+      try {
+        gameDataRef.current.solution = JSON.parse(cachedSolution);
+        return;
+      } catch (e) {
+        console.warn('Error parsing cached solution, regenerating:', e);
+      }
     }
 
     const setupRng = getRNG(seed + '_setup');
     const diffSetting = localStorage.getItem('activeDifficulty_' + seed) || 'normal';
     const startingIntelCount = parseInt(localStorage.getItem('activeIntel_' + seed) || '8');
-    const allRooms = gameDataRef.current.locations.map(l => l.id).sort();
+
+    // Ensure fallback data is always ready even before network fetch resolves
+    const locationsList =
+      gameDataRef.current.locations && gameDataRef.current.locations.length > 0
+        ? gameDataRef.current.locations
+        : REAL_LOCATIONS_FALLBACK;
+    const weaponsList =
+      gameDataRef.current.weapons && gameDataRef.current.weapons.length > 0
+        ? gameDataRef.current.weapons
+        : REAL_WEAPONS_FALLBACK;
+    const suspectsList =
+      gameDataRef.current.suspects && gameDataRef.current.suspects.length > 0
+        ? gameDataRef.current.suspects
+        : REAL_SUSPECTS;
+
+    if (!gameDataRef.current.roomConnections || Object.keys(gameDataRef.current.roomConnections).length === 0) {
+      const connections: Record<string, RoomConnection> = {};
+      locationsList.forEach((loc, idx) => {
+        connections[loc.id] = {
+          floor: idx < 8 ? 'FIRST' : 'SECOND',
+          NORTH: locationsList[(idx + 1) % locationsList.length].id,
+          SOUTH: locationsList[(idx + locationsList.length - 1) % locationsList.length].id,
+          UP: 'STAIRCASE',
+          DOWN: 'ENTRANCE HALL',
+        };
+      });
+      gameDataRef.current.roomConnections = connections;
+    }
+
+    const allRooms = locationsList.map(l => l.id).sort();
 
     // Determine Ground Floor (loopA) and First Floor (loopB)
     const loopA: string[] = [];
@@ -946,20 +1053,20 @@ export default function App() {
 
     // Shuffle the 12 real suspects
     const availableSuspects = seededShuffle(
-      [...gameDataRef.current.suspects].sort((a, b) => a.name.localeCompare(b.name)),
+      [...suspectsList].sort((a, b) => a.name.localeCompare(b.name)),
       setupRng
     );
 
     // Shuffle weapons
     const availableWeapons = seededShuffle(
-      [...gameDataRef.current.weapons].sort((a, b) => a.name.localeCompare(b.name)),
+      [...weaponsList].sort((a, b) => a.name.localeCompare(b.name)),
       setupRng
     );
 
     // 1 Killer + 1 Accomplice + 10 Innocents = Exactly 12 Suspects!
-    const killerSuspect = availableSuspects.pop()!;
-    const accompliceSuspect = availableSuspects.pop()!;
-    const trueWeapon = availableWeapons.pop()!;
+    const killerSuspect = availableSuspects.pop() || suspectsList[0];
+    const accompliceSuspect = availableSuspects.pop() || suspectsList[1];
+    const trueWeapon = availableWeapons.pop() || weaponsList[0];
 
     const ents: any[] = [
       { id: 'K', type: 'Killer', name: killerSuspect.name },
@@ -969,7 +1076,8 @@ export default function App() {
 
     // 2 Decoy Weapons
     for (let i = 0; i < 2; i++) {
-      ents.push({ id: 'W2', type: 'Decoy Weapon', name: availableWeapons.pop()!.name });
+      const decoy = availableWeapons.pop() || weaponsList[Math.min(i + 1, weaponsList.length - 1)];
+      ents.push({ id: 'W2', type: 'Decoy Weapon', name: decoy.name });
     }
 
     // Distribute remaining 10 innocent suspects (all real people)
@@ -1000,14 +1108,14 @@ export default function App() {
         e.loopName = 'The Ground Floor';
       } else {
         e.loop = safeLoopB;
-        e.startIndex = i - safeLoopA.length;
+        e.startIndex = Math.max(0, i - safeLoopA.length);
         e.loopName = 'The First Floor';
       }
     });
 
-    const kEnt = shuffledEnts.find(e => e.id === 'K');
-    const aEnt = shuffledEnts.find(e => e.id === 'A');
-    const wEnt = shuffledEnts.find(e => e.id === 'W1');
+    const kEnt = shuffledEnts.find(e => e.id === 'K') || shuffledEnts[0];
+    const aEnt = shuffledEnts.find(e => e.id === 'A') || shuffledEnts[1];
+    const wEnt = shuffledEnts.find(e => e.id === 'W1') || shuffledEnts[2];
 
     const validCrimeScenes = allRooms.filter(r => r !== 'HALLWAY' && r !== 'STAIRCASE');
     const cScene = validCrimeScenes[Math.floor(setupRng() * validCrimeScenes.length)] || 'DINING HALL';
@@ -1016,17 +1124,17 @@ export default function App() {
       entities: shuffledEnts,
       loopA: safeLoopA,
       loopB: safeLoopB,
-      killerPath: [kEnt.loop[kEnt.startIndex]],
+      killerPath: [kEnt.loop[kEnt.startIndex] || safeLoopA[0]],
       crimeScene: cScene,
     };
     gameDataRef.current.solution = sol;
     localStorage.setItem('masterSolution_' + seed, JSON.stringify(sol));
 
     // --- GENERATE STARTING INTEL CLUES ---
-    const wData = gameDataRef.current.weapons.find(w => w.name === wEnt.name);
+    const wData = weaponsList.find(w => w.name === wEnt.name);
     const autopsyCategory = wData ? wData.category : 'Sharp Weapon';
-    const kData = gameDataRef.current.suspects.find(s => s.name === kEnt.name);
-    const aData = gameDataRef.current.suspects.find(s => s.name === aEnt.name);
+    const kData = suspectsList.find(s => s.name === kEnt.name);
+    const aData = suspectsList.find(s => s.name === aEnt.name);
 
     let suspectHints: string[] = [];
     let relationalHints: string[] = [];
@@ -1052,9 +1160,9 @@ export default function App() {
     }
 
     // 3. Location Trait Intel
-    const kRoomInfo = gameDataRef.current.locations.find(l => l.id === kEnt.loop[kEnt.startIndex]);
-    const aRoomInfo = gameDataRef.current.locations.find(l => l.id === aEnt.loop[aEnt.startIndex]);
-    const wRoomInfo = gameDataRef.current.locations.find(l => l.id === wEnt.loop[wEnt.startIndex]);
+    const kRoomInfo = locationsList.find(l => l.id === kEnt.loop[kEnt.startIndex]);
+    const aRoomInfo = locationsList.find(l => l.id === aEnt.loop[aEnt.startIndex]);
+    const wRoomInfo = locationsList.find(l => l.id === wEnt.loop[wEnt.startIndex]);
 
     if (kRoomInfo && gameDataRef.current.allCleanTraits.size > 0) {
       const unused = Array.from(gameDataRef.current.allCleanTraits).filter(
@@ -1117,14 +1225,14 @@ export default function App() {
     const finalHints = structuredHints.slice(0, startingIntelCount);
 
     // Autopsy fact
-    const allCategories = [...new Set(gameDataRef.current.weapons.map(w => w.category))];
+    const allCategories = [...new Set(weaponsList.map(w => w.category))];
     let autopsyFact = '';
     if ((diffSetting === 'normal' || diffSetting === 'hard') && allCategories.length > 1) {
       const wrong = allCategories.filter(c => c !== autopsyCategory);
       const wrongCat = wrong[Math.floor(setupRng() * wrong.length)];
-      autopsyFact = `<strong>Autopsy Report:</strong> The Coroner confirmed the victim's wounds were definitely <span style="color:#8b0000; font-weight:bold;">NOT</span> caused by a weapon categorized as: <strong style="color:var(--accent); font-size:1.1rem; text-transform:uppercase;">${wrongCat}</strong>.`;
+      autopsyFact = `<strong>Autopsy Report:</strong> The Coroner confirmed the victim's wounds were definitely <span style="color:#8b0000; font-weight:bold;">NOT</span> caused by a weapon categorized as: <strong style="color:#8b0000; font-size:1.05rem; text-transform:uppercase;">${wrongCat}</strong>.`;
     } else {
-      autopsyFact = `<strong>Autopsy Report:</strong> The Coroner confirmed the victim's fatal wounds were caused by a weapon categorized as: <strong style="color:var(--accent); font-size:1.1rem; text-transform:uppercase;">${autopsyCategory}</strong>.`;
+      autopsyFact = `<strong>Autopsy Report:</strong> The Coroner confirmed the victim's fatal wounds were caused by a weapon categorized as: <strong style="color:#8b0000; font-size:1.05rem; text-transform:uppercase;">${autopsyCategory}</strong>.`;
     }
 
     // Assign items and locked door
@@ -1154,7 +1262,7 @@ export default function App() {
       const shuffledRooms = seededShuffle([...allValidRooms], setupRng);
       const targetRooms = shuffledRooms.slice(0, 8);
       const assignments: Record<string, string> = {};
-      for (let i = 0; i < 8; i++) assignments[targetRooms[i]] = selectedItems[i];
+      for (let i = 0; i < 8; i++) assignments[targetRooms[i]] = selectedItems[i] || 'Torchlight';
       localStorage.setItem('itemAssignments_' + seed, JSON.stringify(assignments));
 
       const sortedRooms = [...targetRooms].sort();
@@ -1190,45 +1298,45 @@ export default function App() {
 
     const aiStartLoc = localStorage.getItem('aiLoc_' + seed) || 'LIBRARY';
 
-    // Confidential Case File (Crime scene room is never spoiled!)
+    // Confidential Case File (Crisp Light Theme Styling for 1930s Detective Dossier)
     const setupHtml = `
       <div style="text-align:center; border-bottom: 2px solid #8b6e2d; padding-bottom:12px; margin-bottom:15px;">
-        <span style="color:#d4af37; font-size:1.4rem; font-weight:bold; text-transform:uppercase; font-family:'Crimson Text', serif; letter-spacing:1px;">Detective's Confidential Case File</span>
+        <span style="color:#8b0000; font-size:1.4rem; font-weight:bold; text-transform:uppercase; font-family:'Crimson Text', serif; letter-spacing:1px;">Detective's Confidential Case File</span>
       </div>
 
       <!-- Inspector Ford Direct Order Box -->
-      <div style="background:#241d18; border:1px solid #8b6e2d; border-left:5px solid #d4af37; border-radius:8px; padding:12px; margin-bottom:14px; text-align:left;">
+      <div style="background:#fbf8f1; border:1px solid #8b6e2d; border-left:5px solid #8b0000; border-radius:8px; padding:12px; margin-bottom:14px; text-align:left;">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
           <span style="font-size:1.1rem;">🕵️‍♂️</span>
-          <strong style="color:#d4af37; font-family:'Crimson Text', serif; text-transform:uppercase; font-size:0.9rem; letter-spacing:0.05em;">Inspector Ford • Scotland Yard Dispatch</strong>
+          <strong style="color:#8b0000; font-family:'Crimson Text', serif; text-transform:uppercase; font-size:0.9rem; letter-spacing:0.05em;">Inspector Ford • Scotland Yard Dispatch</strong>
         </div>
-        <p style="font-family:'Crimson Text', serif; font-style:italic; font-size:0.95rem; line-height:1.45; color:#f0e6d2; margin:0;">
-          "Listen carefully, Detective. Dr. Black didn't collapse from heart failure—this was calculated, cold-blooded murder behind locked doors. Twelve prominent guests are sequestered in this manor, each wearing a polite smile and whispering alibis. One among them has blood on their hands. Track their steps, expose the conspiracy, and deliver the killer before dawn breaks. Do not fail Scotland Yard."
+        <p style="font-family:'Crimson Text', serif; font-style:italic; font-size:0.95rem; line-height:1.45; color:#1c1917; margin:0;">
+          "Listen carefully, Detective Vance. Dr. Black didn't collapse from heart failure—this was calculated, cold-blooded murder behind locked doors. Twelve prominent guests are sequestered in this manor, each wearing a polite smile and whispering alibis. One among them has blood on their hands. Track their steps, expose the conspiracy, and deliver the killer before dawn breaks. Do not fail Scotland Yard."
         </p>
       </div>
 
-      <div style="margin-bottom:12px; text-align:left; background:rgba(139, 28, 20, 0.15); padding:12px; border:1px solid #8b1c14; border-radius:8px;">
-        <strong style="color:#ff6b6b; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;">🚨 Case Alert:</strong><br>
-        <span style="color:#f5eedf; font-size:0.95rem; line-height:1.4;">Dr. Black has been found dead under mysterious circumstances. The entire manor is on lockdown. You must determine who committed the crime, where they are hiding, and what weapon was used.</span>
+      <div style="margin-bottom:12px; text-align:left; background:#fff5f5; padding:12px; border:1px solid #dc2626; border-radius:8px;">
+        <strong style="color:#b91c1c; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;">🚨 Case Alert:</strong><br>
+        <span style="color:#450a0a; font-size:0.95rem; line-height:1.4;">Dr. Black has been found dead under mysterious circumstances. The entire manor is on lockdown. You must determine who committed the crime, where they are hiding, and what weapon was used.</span>
       </div>
       
-      <div style="text-align:left; font-size:1rem; background:#1e1814; padding:12px; border-radius:8px; border:1px solid #8b6e2d; margin-bottom: 12px;">
-        <strong style="color:#d4af37; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;">Precinct Forensics Report:</strong>
-        <ul style="margin:6px 0 0 0; padding-left:18px; color:#e8dec8; font-size:0.95rem; list-style-type:circle; line-height:1.45;">
+      <div style="text-align:left; font-size:1rem; background:#faf6ed; padding:12px; border-radius:8px; border:1px solid #8b6e2d; margin-bottom: 12px;">
+        <strong style="color:#8b0000; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;">Precinct Forensics Report:</strong>
+        <ul style="margin:6px 0 0 0; padding-left:18px; color:#1c1917; font-size:0.95rem; list-style-type:circle; line-height:1.45;">
           <li style="margin-bottom: 6px;">${autopsyFact}</li>
           <li><strong>Decoy Warning:</strong> The culprit planted two fake weapons to throw us off. They are NOT the true murder weapon.</li>
         </ul>
       </div>
 
-      <div style="margin-bottom:12px; text-align:left; background:rgba(212,175,55,0.08); padding:10px; border:1px solid #8b6e2d; border-radius:8px;">
-        <strong style="color:#d4af37; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;">📍 Insertion Points:</strong><br>
-        <span style="color:#f5eedf; font-size:0.95rem;">You have been secretly deployed into the <strong>${startLoc}</strong>.</span><br>
-        <span style="color:#ff8585; font-size:0.95rem;">🚨 Detective Alfred has entered the <strong>${aiStartLoc}</strong>.</span>
+      <div style="margin-bottom:12px; text-align:left; background:#fefce8; padding:10px; border:1px solid #ca8a04; border-radius:8px;">
+        <strong style="color:#854d0e; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;">📍 Insertion Points:</strong><br>
+        <span style="color:#713f12; font-size:0.95rem;">You have been secretly deployed into the <strong>${startLoc}</strong>.</span><br>
+        <span style="color:#991b1b; font-size:0.95rem;">🚨 Detective Alfred has entered the <strong>${aiStartLoc}</strong>.</span>
       </div>
 
-      <div style="margin-top:15px; text-align:left; background:#1c1713; padding:12px; border-radius:8px; border:1px solid #5a482b;">
-        <strong style="color:#d4af37; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;">Crime Scene Starting Intel:</strong>
-        <ul style="margin:8px 0; padding-left:18px; color:#e0d5be; font-size:0.95rem; list-style-type:square; line-height:1.45;">
+      <div style="margin-top:15px; text-align:left; background:#faf6ed; padding:12px; border-radius:8px; border:1px solid #8b6e2d;">
+        <strong style="color:#8b0000; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;">Crime Scene Starting Intel:</strong>
+        <ul style="margin:8px 0; padding-left:18px; color:#1c1917; font-size:0.95rem; list-style-type:square; line-height:1.45;">
           ${finalHints.map(h => `<li style="margin-bottom:6px;">${h}</li>`).join('')}
         </ul>
       </div>
@@ -1251,6 +1359,9 @@ export default function App() {
     } catch {
       itemRooms = [];
     }
+    if (itemRooms.length === 0) {
+      itemRooms = ['BILLIARD ROOM', 'CONSERVATORY', 'DINING HALL', 'KITCHEN', 'LIBRARY', 'LOUNGE', 'STUDY', 'BALLROOM'];
+    }
 
     setModalSetupBoard({
       open: true,
@@ -1264,7 +1375,8 @@ export default function App() {
   // --- START NEW GAME ---
   const handleStartNewGame = () => {
     setModalModeSelect(false);
-    const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+    // Assign clean, unique 4-digit numeric Case Code (1000 - 9999)
+    const code = String(Math.floor(1000 + Math.random() * 9000));
     const isDev = localStorage.getItem('isDevMode') === 'true';
 
     const initialTokens = isDev ? 9000 : 250;
@@ -1282,8 +1394,10 @@ export default function App() {
     localStorage.setItem('playerScore_' + code, '0');
     localStorage.setItem('round_' + code, '1');
     localStorage.setItem('caseTime_' + code, '0');
+    localStorage.removeItem('roomUnlocked_' + code);
 
     setActiveSeed(code);
+    setIsRoomUnlocked(false);
     setTokens(initialTokens);
     setApSpent(0);
     setFreeAP(0);
@@ -1292,6 +1406,12 @@ export default function App() {
     setPlayerScore(0);
     setRound(1);
     setTimeSpent(0);
+    setNotebookLogs([]);
+    setTopNotification(null);
+    setFordAdviceResult(null);
+    setCompletedPhases([]);
+    setActivePhase(null);
+    setAccuseChances(2);
 
     initMysteryState(code);
 
@@ -1311,26 +1431,81 @@ export default function App() {
     setAiStats(initialAIStats);
     localStorage.setItem('aiStats_' + code, JSON.stringify(initialAIStats));
 
+    // Persist case data to backend store so anyone entering the same code receives the exact same case
+    try {
+      const casePayload = {
+        code,
+        difficulty: newGameDifficulty,
+        intel: newGameIntel,
+        lockedRoom: localStorage.getItem('lockedRoom_' + code),
+        itemAssignments: JSON.parse(localStorage.getItem('itemAssignments_' + code) || '{}'),
+        sortedRooms: JSON.parse(localStorage.getItem('sortedRooms_' + code) || '[]'),
+        solution: gameDataRef.current.solution,
+        roomUnlocked: false,
+      };
+      fetch('/api/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, caseData: casePayload }),
+      }).catch(e => console.warn('Case sync to server error:', e));
+    } catch (e) {
+      console.warn('Error building case payload:', e);
+    }
+
     setActiveView('view-main');
 
     setTimeout(() => {
       triggerShowCaseSetup(code);
-    }, 200);
+    }, 150);
   };
 
   // --- JOIN GAME ---
-  const handleJoinGame = () => {
-    if (joinSeed.trim().length !== 4) {
-      showAlert('Please enter a 4-character Case Code.');
+  const handleJoinGame = async () => {
+    const rawInput = joinSeed.trim().toUpperCase().replace(/^CASE-/, '').replace(/[^A-Z0-9]/g, '');
+    if (rawInput.length < 3 || rawInput.length > 8) {
+      showAlert('Please enter a valid Case Code (e.g. 4829).');
       return;
     }
-    const code = joinSeed.trim().toUpperCase();
+    const code = rawInput;
     setModalJoinMode(false);
+
+    // Sync from server if this case was created by another player
+    try {
+      const res = await fetch('/api/cases/' + code);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.caseData) {
+          const cd = data.caseData;
+          if (cd.difficulty) localStorage.setItem('activeDifficulty_' + code, cd.difficulty);
+          if (cd.intel) localStorage.setItem('activeIntel_' + code, cd.intel.toString());
+          if (cd.lockedRoom) localStorage.setItem('lockedRoom_' + code, cd.lockedRoom);
+          if (cd.itemAssignments) localStorage.setItem('itemAssignments_' + code, JSON.stringify(cd.itemAssignments));
+          if (cd.sortedRooms) localStorage.setItem('sortedRooms_' + code, JSON.stringify(cd.sortedRooms));
+          if (cd.solution) {
+            gameDataRef.current.solution = cd.solution;
+            localStorage.setItem('masterSolution_' + code, JSON.stringify(cd.solution));
+          }
+          if (cd.roomUnlocked) {
+            localStorage.setItem('roomUnlocked_' + code, 'true');
+            setIsRoomUnlocked(true);
+          } else {
+            localStorage.removeItem('roomUnlocked_' + code);
+            setIsRoomUnlocked(false);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch case from server, using deterministic fallback generation:', err);
+    }
 
     localStorage.setItem('activeCaseCode', code);
     localStorage.setItem('activeGameMode', 'solo');
-    localStorage.setItem('activeDifficulty_' + code, joinDifficulty);
-    localStorage.setItem('activeIntel_' + code, joinIntel);
+    if (!localStorage.getItem('activeDifficulty_' + code)) {
+      localStorage.setItem('activeDifficulty_' + code, joinDifficulty);
+    }
+    if (!localStorage.getItem('activeIntel_' + code)) {
+      localStorage.setItem('activeIntel_' + code, joinIntel);
+    }
 
     if (!localStorage.getItem('tokens_' + code)) localStorage.setItem('tokens_' + code, '250');
     if (!localStorage.getItem('freeAP_' + code)) localStorage.setItem('freeAP_' + code, '0');
@@ -1389,6 +1564,14 @@ export default function App() {
       return;
     }
 
+    const lockedChamber = localStorage.getItem('lockedRoom_' + activeSeed);
+    if (moveDropdownVal === lockedChamber && !isRoomUnlocked) {
+      showAlert(
+        `<strong>🔒 CHAMBER HEAVILY PADLOCKED:</strong><br><br>The heavy entrance to the <strong>${lockedChamber}</strong> is barred with a high-security Scotland Yard padlock!<br><br>Access is strictly prohibited until the <strong>Key Card</strong> is scanned using the <strong>📷 SCANNER</strong> tab at the top of your screen.`
+      );
+      return;
+    }
+
     const alfredLoc = aiStats.loc || localStorage.getItem('aiLoc_' + activeSeed);
     if (moveDropdownVal === alfredLoc) {
       showAlert(
@@ -1410,25 +1593,113 @@ export default function App() {
   // --- ACTION: TOSS ROOM ---
   const handleTossRoom = () => {
     const r = playerLocation;
-    showConfirm(`Tossing the <strong>${r}</strong> costs <strong style="color:var(--gold);">4 AP ⚡</strong>.`, () => {
-      spendAP(4);
-      localStorage.setItem('tossedRoom_' + activeSeed + '_' + r, 'true');
+    showConfirm(
+      `<div class="text-left font-serif text-sm">
+        <strong style="color:var(--gold); font-size:1.15rem; display:block; margin-bottom:8px;">TOSS THE ROOM</strong>
+        Tossing the <strong>${r}</strong> costs <strong style="color:var(--gold);">4 AP ⚡</strong> and <strong style="color:var(--crimson);">1 Reputation ⚖️</strong>.<br><br>
+        <span style="color:#666;">(Ransacking drawers, floorboards, and wardrobes disturbs the estate and damages your department standing.)</span><br><br>
+        Proceed with thorough search?
+      </div>`,
+      () => {
+        spendAP(4);
+        const newRep = Math.max(0, playerRep - 1);
+        setPlayerRep(newRep);
+        localStorage.setItem('playerRep_' + activeSeed, newRep.toString());
+        localStorage.setItem('tossedRoom_' + activeSeed + '_' + r, 'true');
 
-      const occ = gameDataRef.current.solution?.entities.find(e => e.loop[e.startIndex] === r);
-      let msg = '';
-      if (occ && (occ.id === 'K' || occ.id === 'A')) {
-        msg = `You caught <strong style="color:var(--gold); font-size:1.2rem;">${occ.name}</strong> hiding in the ${r}! They are officially a prime suspect.`;
-      } else if (occ && occ.id.startsWith('W')) {
-        msg = `You uncovered a weapon: <strong style="color:var(--accent); font-size:1.2rem;">${occ.name}</strong> carefully stashed behind the furniture.`;
-      } else if (occ && occ.id === 'I' && occ.name !== 'Nobody') {
-        msg = `You searched the room and found guest <strong style="color:var(--gold);">${occ.name}</strong> trembling in a corner.`;
-      } else {
-        msg = `You tore the ${r} apart from top to bottom. Nothing suspicious was found.`;
+        const occ = gameDataRef.current.solution?.entities.find(e => e.loop[e.startIndex] === r);
+        let msg = '';
+        let pointsEarned = 15;
+        if (occ && (occ.id === 'K' || occ.id === 'A')) {
+          pointsEarned = 100;
+          msg = `You caught <strong style="color:var(--gold); font-size:1.2rem;">${occ.name}</strong> hiding in the ${r}! They are officially a prime suspect. (+100 Merit Points)`;
+        } else if (occ && occ.id.startsWith('W')) {
+          pointsEarned = 120;
+          msg = `You uncovered a weapon: <strong style="color:var(--accent); font-size:1.2rem;">${occ.name}</strong> carefully stashed behind the furniture. (+120 Merit Points)`;
+        } else if (occ && occ.id === 'I' && occ.name !== 'Nobody') {
+          pointsEarned = 40;
+          msg = `You searched the room and found guest <strong style="color:var(--gold);">${occ.name}</strong> trembling in a corner. (+40 Merit Points)`;
+        } else {
+          pointsEarned = 15;
+          msg = `You tore the ${r} apart from top to bottom. Nothing suspicious was found. (+15 Thoroughness Points)`;
+        }
+
+        const newPlayerScore = playerScore + pointsEarned;
+        setPlayerScore(newPlayerScore);
+        localStorage.setItem('score_' + activeSeed, newPlayerScore.toString());
+        localStorage.setItem('playerScore_' + activeSeed, newPlayerScore.toString());
+
+        saveLog(`Tossed [${r}] (-4 AP, -1 Reputation, +${pointsEarned} Pts): ${msg.replace(/<[^>]+>/g, '')}`);
+        showAlert(`<span style="color:var(--gold); font-weight:bold;">SEARCH COMPLETE (-1 REPUTATION, +${pointsEarned} PTS)</span><br><br>${msg}`);
       }
+    );
+  };
 
-      saveLog(`Tossed [${r}]: ${msg.replace(/<[^>]+>/g, '')}`);
-      showAlert(`<span style="color:var(--gold); font-weight:bold;">SEARCH COMPLETE</span><br><br>${msg}`);
-    });
+  // --- SCANNER / KEY CARD UNLOCK ---
+  const handleUnlockKeyCard = () => {
+    const lockedChamber = localStorage.getItem('lockedRoom_' + activeSeed) || 'CELLAR';
+    setIsRoomUnlocked(true);
+    localStorage.setItem('roomUnlocked_' + activeSeed, 'true');
+    fetch('/api/cases/' + activeSeed + '/unlock', { method: 'POST' }).catch(e =>
+      console.warn('Sync unlock failed:', e)
+    );
+
+    const newScore = playerScore + 40;
+    setPlayerScore(newScore);
+    localStorage.setItem('score_' + activeSeed, newScore.toString());
+    localStorage.setItem('playerScore_' + activeSeed, newScore.toString());
+
+    saveLog(`🔓 Key Card Verified: Unlocked the ${lockedChamber} with scanner (+40 Merit Points).`);
+    setModalScanner(false);
+    showAlert(
+      `<strong>🎉 KEY CARD VERIFIED!</strong><br><br>The electromagnetic deadbolt on the <strong>${lockedChamber}</strong> clicked and retracted! (+40 Merit Points)<br><br>All investigators now have full legal clearance to enter and search the ${lockedChamber}.`
+    );
+  };
+
+  const handleScanGenericToken = () => {
+    setModalScanner(false);
+    spendAP(1);
+    const newScore = playerScore + 15;
+    setPlayerScore(newScore);
+    localStorage.setItem('score_' + activeSeed, newScore.toString());
+    localStorage.setItem('playerScore_' + activeSeed, newScore.toString());
+    saveLog(`Scanned token in [${playerLocation}] (-1 AP, +15 Thoroughness Points).`);
+    showAlert(`Scanned token in <strong>${playerLocation}</strong>: Room verified clear of traps. (+15 Merit Points)`);
+  };
+
+  // --- TACTICAL GEAR DEPLOYMENT ---
+  const handleDeploySabotageTrap = () => {
+    showConfirm(
+      `<div class="text-left font-serif text-sm">
+        <strong style="color:var(--gold); font-size:1.15rem; display:block; margin-bottom:8px;">DEPLOY SABOTAGE TRAP</strong>
+        Conceal a spring-loaded sabotage tripwire in your current chamber (<strong>${playerLocation}</strong>)?<br><br>
+        If Detective Alfred enters this room on any round, the trap will detonate, stopping him in his tracks and docking <strong>50 points</strong> from his score!
+      </div>`,
+      () => {
+        setHasSabotageTrap(false);
+        setSabotageTrapRoom(playerLocation);
+        localStorage.setItem('sabotageTrapRoom_' + activeSeed, playerLocation);
+        saveLog(`Tactical Gear: Concealed a Sabotage Trap in the ${playerLocation}.`);
+        showAlert(`Sabotage Trap primed in the <strong>${playerLocation}</strong>!`);
+      }
+    );
+  };
+
+  const handleDeployPoliceTape = () => {
+    showConfirm(
+      `<div class="text-left font-serif text-sm">
+        <strong style="color:var(--gold); font-size:1.15rem; display:block; margin-bottom:8px;">DEPLOY POLICE TAPE</strong>
+        Barricade the entrance to the <strong>${playerLocation}</strong> with yellow Scotland Yard crime scene tape?<br><br>
+        Warns away or blocks unauthorized intruders and penalizes rival investigators who breach it.
+      </div>`,
+      () => {
+        setHasPoliceTape(false);
+        setPoliceTapeRoom(playerLocation);
+        localStorage.setItem('policeTapeRoom_' + activeSeed, playerLocation);
+        saveLog(`Tactical Gear: Barricaded ${playerLocation} with Police Tape.`);
+        showAlert(`Crime Scene Police Tape deployed across the <strong>${playerLocation}</strong>!`);
+      }
+    );
   };
 
   // --- ACTION: INTERROGATE SUSPECT (STRICTLY ONE OF THE 12 REAL PEOPLE) ---
@@ -1583,7 +1854,7 @@ export default function App() {
     });
   };
 
-  // --- LOG: SUBMIT WARRANT ---
+  // --- LOG: SUBMIT WARRANT (MAGISTRATE JUDGE REVIEWS NEXT ROUND) ---
   const handleFieldReport = () => {
     if (!reportRoom) {
       showAlert('Select a room to file a search warrant for.');
@@ -1592,30 +1863,34 @@ export default function App() {
     const isFree = round % 2 !== 0;
     const apCost = isFree ? 0 : 3;
 
-    showConfirm(`File search warrant on <strong>${reportRoom}</strong>? ${isFree ? '(Free Courier)' : '(Costs 3 AP ⚡)'}`, () => {
-      if (!isFree) spendAP(apCost);
-      setModalFieldReport(false);
+    showConfirm(
+      `<div class="text-left font-serif text-sm">
+        <strong style="color:var(--gold); font-size:1.15rem; display:block; margin-bottom:8px;">FILE SEARCH REPORT</strong>
+        File search warrant on <strong>${reportRoom}</strong>? ${isFree ? '<strong style="color:#16a34a;">(Free Courier Service)</strong>' : '<strong style="color:var(--gold);">(Costs 3 AP ⚡)</strong>'}<br><br>
+        <span style="color:#666;">The Magistrate Judge will examine your claims overnight. The Judge\'s official ruling will be delivered at the dawn of Round ${round + 1} when Alfred makes his opening move!</span>
+      </div>`,
+      () => {
+        if (!isFree) spendAP(apCost);
+        setModalFieldReport(false);
 
-      const actualEnt = gameDataRef.current.solution?.entities.find(e => e.loop[e.startIndex] === reportRoom);
-      const isCorrect = actualEnt && actualEnt.id === reportEntity;
+        const newPending = {
+          room: reportRoom,
+          entity: reportEntity,
+          submittedRound: round,
+        };
+        setPendingJudgeReport(newPending);
+        localStorage.setItem('pendingJudgeReport_' + activeSeed, JSON.stringify(newPending));
 
-      if (isCorrect) {
-        const bonusTokens = tokens + 100;
-        setTokens(bonusTokens);
-        setPlayerRep(r => r + 1);
-        setPlayerScore(s => s + 200);
+        saveLog(`Search Report for ${reportRoom} submitted to Magistrate Judge (awaiting morning verdict).`);
         showAlert(
-          `<span style="color:#4ade80; font-weight:bold;">WARRANT CONFIRMED!</span><br><br>The department verified your search report for ${reportRoom}.<br><strong>+200 Pts, +$100, +1 Rep!</strong>`
+          `<div class="text-left font-serif text-sm">
+            <strong style="color:var(--gold); font-size:1.15rem; display:block; margin-bottom:8px;">WARRANT DISPATCHED TO COURT</strong>
+            Your search report on <strong>${reportRoom}</strong> has been couriered to the precinct magistrate judge.<br><br>
+            The court\'s official findings will be unsealed at the start of Round ${round + 1} when Alfred takes his turn.
+          </div>`
         );
-        saveLog(`Warrant Confirmed: ${reportRoom}`);
-      } else {
-        setPlayerScore(s => Math.max(0, s - 50));
-        showAlert(
-          `<span style="color:#ff6b6b; font-weight:bold;">WARRANT REJECTED</span><br><br>Forensics found no matching evidence in the ${reportRoom}. (-50 Pts)`
-        );
-        saveLog(`Warrant Rejected: ${reportRoom}`);
       }
-    });
+    );
   };
 
   // --- EMERGENCY LOAN FROM INSPECTOR FORD ---
@@ -1623,8 +1898,8 @@ export default function App() {
     showConfirm(
       `<div class="text-left font-serif text-sm">
         <strong style="color:var(--gold); font-size:1.15rem; display:block; margin-bottom:8px;">REQUEST PRECINCT ADVANCE</strong>
-        Inspector Ford will issue an emergency departmental loan of <strong style="color:#4ade80;">+$100</strong> from discretionary petty cash.<br><br>
-        <span style="color:#f87171; font-weight:bold;">⚠️ Reprimand Penalty:</span> Deducts <strong>150 points</strong> from your official service merit score.<br><br>
+        Inspector Ford will issue an emergency departmental loan of <strong style="color:#16a34a;">+$100</strong> from discretionary petty cash.<br><br>
+        <span style="color:#b91c1c; font-weight:bold;">⚠️ Reprimand Penalty:</span> Deducts <strong>150 points</strong> from your official service merit score.<br><br>
         Do you accept the loan and reprimand?
       </div>`,
       () => {
@@ -1640,6 +1915,87 @@ export default function App() {
           scoreDeducted: 150,
           fundsGranted: 100,
         });
+      }
+    );
+  };
+
+  // --- FORENSIC DEDUCTION CONSULTATION FROM INSPECTOR FORD ---
+  const handleRequestFordAdvice = () => {
+    if (playerScore < 75) {
+      showAlert(
+        `<div class="text-left font-serif text-sm">
+          <strong style="color:var(--crimson); font-size:1.1rem; display:block; margin-bottom:6px;">INSUFFICIENT SERVICE MERIT</strong>
+          Inspector Ford requires at least <strong>75 Merit Points</strong> on your service record to allocate precinct forensic resources. Current Merit: <strong>${playerScore}</strong>.
+        </div>`
+      );
+      return;
+    }
+
+    const sol = gameDataRef.current.solution;
+    if (!sol) {
+      showAlert("No active case file loaded.");
+      return;
+    }
+
+    showConfirm(
+      `<div class="text-left font-serif text-sm">
+        <strong style="color:var(--gold); font-size:1.15rem; display:block; margin-bottom:8px;">CONSULT INSPECTOR FORD</strong>
+        Inspector Ford will cross-examine precinct wiretaps, ballistics, and floor registries to provide a verified forensic deduction.<br><br>
+        <span style="color:#b91c1c; font-weight:bold;">⚠️ Merit Cost:</span> Deducts <strong>75 merit points</strong> from your service record.<br><br>
+        Place the call to precinct headquarters?
+      </div>`,
+      () => {
+        const newScore = Math.max(0, playerScore - 75);
+        setPlayerScore(newScore);
+        localStorage.setItem('score_' + activeSeed, newScore.toString());
+
+        const kEnt = sol.entities.find(e => e.id === 'K');
+        const aEnt = sol.entities.find(e => e.id === 'A');
+        const wEnt = sol.entities.find(e => e.id === 'W1');
+        const innocents = sol.entities.filter(e => e.id === 'I' && e.name !== 'Nobody');
+
+        const kSuspect = gameDataRef.current.suspects.find(s => s.name === kEnt?.name);
+        const wData = gameDataRef.current.weapons.find(w => w.name === wEnt?.name);
+
+        const possibleLeads: string[] = [];
+
+        // 1. Innocent alibi lead
+        if (innocents.length > 0) {
+          const randomInnocent = innocents[Math.floor(Math.random() * innocents.length)];
+          const innoRoom = randomInnocent.loop[randomInnocent.startIndex];
+          possibleLeads.push(
+            `Precinct phone logs confirm <strong>${randomInnocent.name}</strong> was placing a verified trunk call from the <strong>${innoRoom}</strong> during the murder. Their alibi is airtight — they are completely INNOCENT!`
+          );
+        }
+
+        // 2. Weapon category / floor hint
+        if (wData) {
+          const wRoom = wEnt ? wEnt.loop[wEnt.startIndex] : '';
+          const wFloor = wRoom && sol.loopB.includes(wRoom) ? 'First Floor (Upstairs)' : 'Ground Floor';
+          possibleLeads.push(
+            `Ballistics dispatch: The genuine murder weapon is categorized under <strong>${wData.category}</strong> and was hidden somewhere on the <strong>${wFloor}</strong>.`
+          );
+        }
+
+        // 3. Killer trait hint
+        if (kSuspect && kSuspect.traits.length > 0) {
+          const trait = kSuspect.traits[Math.floor(Math.random() * kSuspect.traits.length)];
+          possibleLeads.push(
+            `HQ Forensics Note: Confidential witness statements confirm the culprit possesses the distinctive trait: <em>"${trait}"</em>.`
+          );
+        }
+
+        // 4. Accomplice loop hint
+        if (aEnt) {
+          possibleLeads.push(
+            `HQ Surveillance: The accomplice was shadowed lurking exclusively within <strong>${aEnt.loopName}</strong>.`
+          );
+        }
+
+        const selectedLead = possibleLeads[Math.floor(Math.random() * possibleLeads.length)];
+        setFordAdviceResult(selectedLead);
+        saveLog(`<strong>Inspector Ford Lead:</strong> ${selectedLead.replace(/<[^>]+>/g, '')} (-75 Merit Points)`);
+        playDing();
       }
     );
   };
@@ -1708,17 +2064,17 @@ export default function App() {
     const isExpert = currentDiff === 'expert' || currentDiff === 'hard';
 
     let aiSubmittedCount = 3;
-    let successRate = 0.65;
+    let successRate = 0.50;
 
     if (isBeginner) {
       aiSubmittedCount = Math.random() < 0.5 ? 1 : 2;
-      successRate = 0.35;
+      successRate = 0.30;
     } else if (isExpert) {
       aiSubmittedCount = 3;
-      successRate = 0.85;
+      successRate = 0.70;
     } else {
-      aiSubmittedCount = Math.random() < 0.3 ? 2 : 3;
-      successRate = 0.65;
+      aiSubmittedCount = Math.random() < 0.4 ? 2 : 3;
+      successRate = 0.50;
     }
 
     let aiSuccessCount = 0;
@@ -1728,7 +2084,7 @@ export default function App() {
       }
     }
 
-    const aiBonus = aiSuccessCount * 80;
+    const aiBonus = aiSuccessCount * 50;
     const nAIScore = (aiStats.score || 0) + aiBonus;
     const nAI = {
       ...aiStats,
@@ -1758,57 +2114,47 @@ export default function App() {
     setTimeSpent(newTime);
     localStorage.setItem('caseTime_' + activeSeed, newTime.toString());
 
-    setApSpent(0);
-    localStorage.setItem('apSpent_' + activeSeed, '0');
-    setCompletedPhases([]);
-    localStorage.removeItem('completedPhases_' + activeSeed);
-
     setModalBiRoundReport(prev => ({ ...prev, open: false, step: 'form' }));
 
-    const alfredLoc = aiStats.loc || localStorage.getItem('aiLoc_' + activeSeed);
-    showAlert(
-      `<strong style="color:var(--gold); font-size:1.2rem;">ROUND ${nextRound} BEGINS</strong><br><br>🕒 The grandfather clock strikes <strong>${formatClock(
-        newTime
-      )}</strong>.<br><br>🚨 Detective Alfred is currently searching the <strong>${alfredLoc}</strong>.<br><br>Action points refreshed (8 AP).`
-    );
+    saveLog(`Bi-Round Inquest concluded. Grandfather clock strikes ${formatClock(newTime)}. Alfred takes opening move for Round ${nextRound}.`);
+    // Alfred moves FIRST at the start of next round!
+    executeAlfredTurn(nextRound);
   };
 
-  // --- END ROUND & AI TURN (3-TIER INTELLIGENCE & PATHFINDING) ---
-  const endRoundTurn = () => {
-    // Determine AI difficulty setting: beginner, normal, or expert
+  // --- ALFRED MOVES FIRST AT START OF EACH ROUND ---
+  const executeAlfredTurn = (roundNum: number) => {
     const currentDiff = (localStorage.getItem('activeDifficulty_' + activeSeed) || newGameDifficulty || 'normal').toLowerCase();
     const isBeginner = currentDiff === 'beginner' || currentDiff === 'rookie';
     const isExpert = currentDiff === 'expert' || currentDiff === 'hard';
 
-    // Eligible destination rooms: NEVER allow Alfred into playerLocation!
-    const candidateRooms = gameDataRef.current.locations
-      .map(l => l.id)
-      .filter(r => r !== 'HALLWAY' && r !== 'STAIRCASE' && r !== playerLocation);
+    const alfredPrevLoc = aiStats.loc || localStorage.getItem('aiLoc_' + activeSeed) || 'LIBRARY';
+    const conn = gameDataRef.current.roomConnections[alfredPrevLoc] || REAL_CONNECTIONS_FALLBACK[alfredPrevLoc] || {};
+    const lockedChamber = localStorage.getItem('lockedRoom_' + activeSeed);
 
-    const alfredCurrent = aiStats.loc || localStorage.getItem('aiLoc_' + activeSeed) || 'ENTRANCE HALL';
-    const conn = gameDataRef.current.roomConnections[alfredCurrent] || {};
     const neighborRooms = Object.keys(conn)
       .filter(k => k !== 'floor')
       .map(k => conn[k])
-      .filter((r): r is string => Boolean(r) && r !== 'HALLWAY' && r !== 'STAIRCASE' && r !== playerLocation);
+      .filter((r): r is string => Boolean(r) && r !== 'HALLWAY' && r !== 'STAIRCASE' && r !== playerLocation && (isRoomUnlocked || r !== lockedChamber));
+
+    const candidateRooms = gameDataRef.current.locations
+      .map(l => l.id)
+      .filter(r => r !== 'HALLWAY' && r !== 'STAIRCASE' && r !== playerLocation && (isRoomUnlocked || r !== lockedChamber));
 
     let newAILoc = candidateRooms[0] || 'LIBRARY';
 
     if (isBeginner) {
-      // Beginner: Hesitant, wanders somewhat aimlessly across the estate.
-      if (neighborRooms.length > 0 && Math.random() < 0.4) {
+      if (neighborRooms.length > 0 && Math.random() < 0.6) {
         newAILoc = neighborRooms[Math.floor(Math.random() * neighborRooms.length)];
       } else {
         newAILoc = candidateRooms[Math.floor(Math.random() * candidateRooms.length)];
       }
     } else if (isExpert) {
-      // Expert: Master sleuth tracking culprit pathways and weapon stashes.
       const killerEnt = gameDataRef.current.solution?.entities.find(e => e.id === 'K');
       const killerRoom = killerEnt?.loop[killerEnt.startIndex];
       const weaponEnt = gameDataRef.current.solution?.entities.find(e => e.id === 'W1');
       const weaponRoom = weaponEnt?.loop[weaponEnt.startIndex];
 
-      const primeTargets = [killerRoom, weaponRoom].filter((r): r is string => Boolean(r) && r !== playerLocation);
+      const primeTargets = [killerRoom, weaponRoom].filter((r): r is string => Boolean(r) && r !== playerLocation && (isRoomUnlocked || r !== lockedChamber));
       const neighborPrime = neighborRooms.filter(r => primeTargets.includes(r));
 
       if (neighborPrime.length > 0) {
@@ -1821,7 +2167,6 @@ export default function App() {
         newAILoc = candidateRooms[Math.floor(Math.random() * candidateRooms.length)];
       }
     } else {
-      // Normal: Methodical human detective moving room-to-room.
       const unvisitedNeighbors = neighborRooms.filter(r => !(aiStats.visited || []).includes(r));
       if (unvisitedNeighbors.length > 0) {
         newAILoc = unvisitedNeighbors[Math.floor(Math.random() * unvisitedNeighbors.length)];
@@ -1832,7 +2177,6 @@ export default function App() {
       }
     }
 
-    // Safety fallback: ensure Alfred is never in player's room
     if (newAILoc === playerLocation) {
       const safeRooms = candidateRooms.filter(r => r !== playerLocation);
       newAILoc = safeRooms.length > 0 ? safeRooms[0] : 'LIBRARY';
@@ -1840,7 +2184,100 @@ export default function App() {
 
     localStorage.setItem('aiLoc_' + activeSeed, newAILoc);
 
-    const scoreGain = isBeginner ? 40 : isExpert ? 110 : 70;
+    // Balanced AI scoring: reasonable progression rather than excessive automatic points
+    let scoreGain = isBeginner ? 10 : isExpert ? 30 : 20;
+
+    // 1. Check Sabotage Trap in newAILoc
+    let trapTriggered = false;
+    let trapMsg = '';
+    const storedTrap = sabotageTrapRoom || localStorage.getItem('sabotageTrapRoom_' + activeSeed);
+    if (storedTrap && storedTrap === newAILoc) {
+      trapTriggered = true;
+      trapMsg = `💥 SABOTAGE TRAP DETONATED! Alfred stepped straight into your concealed tripwire in the ${newAILoc}! The loud detonation delayed his search and knocked -60 points off his score!`;
+      scoreGain = Math.max(0, scoreGain - 60);
+      setSabotageTrapRoom(null);
+      localStorage.removeItem('sabotageTrapRoom_' + activeSeed);
+      saveLog(`💥 Sabotage Trap Triggered: Detective Alfred caught in ${newAILoc} (-60 Alfred Score).`);
+    }
+
+    // 2. Check Police Tape in newAILoc
+    let tapeTriggered = false;
+    let tapeMsg = '';
+    const storedTape = policeTapeRoom || localStorage.getItem('policeTapeRoom_' + activeSeed);
+    if (storedTape && storedTape === newAILoc) {
+      tapeTriggered = true;
+      tapeMsg = `🚧 POLICE TAPE ENCOUNTERED: Detective Alfred found the entrance to the ${newAILoc} barricaded by your yellow Scotland Yard tape! He was forced to breach procedure.`;
+      saveLog(`🚧 Police Tape Encountered: Detective Alfred breached tape in ${newAILoc}.`);
+    }
+
+    // 3. Check Rival Warrant filed by Alfred
+    let warrantFiled = false;
+    let warrantMsg = '';
+    const warrantChance = isExpert ? 0.35 : 0.2;
+    if (roundNum > 1 && Math.random() < warrantChance) {
+      warrantFiled = true;
+      warrantMsg = `📜 RIVAL WARRANT FILED: Detective Alfred submitted an expedited magistrate search warrant on the ${newAILoc}! (+30 Alfred Points)`;
+      saveLog(`Rival Warrant: Detective Alfred submitted a warrant for ${newAILoc} (+30 Pts).`);
+      scoreGain += 30;
+    }
+
+    // 4. Check Inspector Ford call by Alfred (25% chance)
+    if (Math.random() < 0.25) {
+      scoreGain = Math.max(0, scoreGain - 75);
+      setTopNotification({
+        id: Date.now(),
+        title: '🚨 POLICE DISPATCH • DETECTIVE ALFRED',
+        message: 'Detective Alfred placed an emergency wire call to Inspector Ford requesting forensic deductions! (-75 Alfred Merit Score)',
+      });
+      saveLog(`Police Dispatch: Detective Alfred contacted Inspector Ford at Precinct HQ for deduction leads (-75 Alfred Score).`);
+    }
+
+    // 5. Check Magistrate Judge's Verdict on Player's Search Report (submitted last round)
+    let judgeResult: { approved: boolean; room: string; desc: string } | null = null;
+    const rawPending = pendingJudgeReport || (() => {
+      try {
+        const s = localStorage.getItem('pendingJudgeReport_' + activeSeed);
+        return s ? JSON.parse(s) : null;
+      } catch {
+        return null;
+      }
+    })();
+
+    if (rawPending) {
+      const actualEnt = gameDataRef.current.solution?.entities.find(e => e.loop[e.startIndex] === rawPending.room);
+      const isCorrect = actualEnt && actualEnt.id === rawPending.entity;
+      if (isCorrect) {
+        const bonusTokens = tokens + 100;
+        const bonusScore = playerScore + 200;
+        const bonusRep = playerRep + 1;
+        setTokens(bonusTokens);
+        setPlayerScore(bonusScore);
+        setPlayerRep(bonusRep);
+        localStorage.setItem('tokens_' + activeSeed, bonusTokens.toString());
+        localStorage.setItem('score_' + activeSeed, bonusScore.toString());
+        localStorage.setItem('playerRep_' + activeSeed, bonusRep.toString());
+        judgeResult = {
+          approved: true,
+          room: rawPending.room,
+          desc: `WARRANT APPROVED! The Magistrate Judge officially endorsed your search report for the ${rawPending.room}. Your deductions were confirmed accurate! (+200 Merit Pts, +$100 Funds, +1 Reputation)`,
+        };
+        saveLog(`⚖️ Judge Verdict: Search Report on ${rawPending.room} APPROVED (+200 Pts, +$100, +1 Rep).`);
+      } else {
+        const penScore = Math.max(0, playerScore - 50);
+        setPlayerScore(penScore);
+        localStorage.setItem('score_' + activeSeed, penScore.toString());
+        judgeResult = {
+          approved: false,
+          room: rawPending.room,
+          desc: `WARRANT REJECTED! The Magistrate Judge dismissed your search warrant for the ${rawPending.room} due to lack of material evidence. (-50 Merit Pts)`,
+        };
+        saveLog(`⚖️ Judge Verdict: Search Report on ${rawPending.room} REJECTED (-50 Pts).`);
+      }
+      setPendingJudgeReport(null);
+      localStorage.removeItem('pendingJudgeReport_' + activeSeed);
+    }
+
+    // Update Alfred's stats
     const updatedAI = {
       ...aiStats,
       cleared: (aiStats.cleared || 0) + 1,
@@ -1852,6 +2289,33 @@ export default function App() {
     setAiStats(updatedAI);
     localStorage.setItem('aiStats_' + activeSeed, JSON.stringify(updatedAI));
 
+    // Open Alfred's Turn Announcement Modal!
+    setModalAlfredTurn({
+      open: true,
+      round: roundNum,
+      fromRoom: alfredPrevLoc,
+      toRoom: newAILoc,
+      trapTriggered,
+      trapMsg,
+      tapeTriggered,
+      tapeMsg,
+      warrantFiled,
+      warrantMsg,
+      judgeResult,
+    });
+  };
+
+  const handleAcknowledgeAlfredTurn = () => {
+    setModalAlfredTurn(null);
+    setApSpent(0);
+    localStorage.setItem('apSpent_' + activeSeed, '0');
+    setCompletedPhases([]);
+    localStorage.removeItem('completedPhases_' + activeSeed);
+    setActivePhase('MOVE');
+  };
+
+  // --- END ROUND & AI TURN TRANSITION ---
+  const endRoundTurn = () => {
     // CHECK IF THIS ENDS AN EVEN ROUND (END OF ROUND 2, 4, 6...)
     if (round % 2 === 0) {
       saveLog(`Round ${round} Concluded. Initiating Bi-Round Department Forensics Reporting.`);
@@ -1878,18 +2342,10 @@ export default function App() {
     setTimeSpent(newTime);
     localStorage.setItem('caseTime_' + activeSeed, newTime.toString());
 
-    setApSpent(0);
-    localStorage.setItem('apSpent_' + activeSeed, '0');
-    setCompletedPhases([]);
-    localStorage.removeItem('completedPhases_' + activeSeed);
+    saveLog(`Round ${round} Ended. Grandfather clock strikes ${formatClock(newTime)}. Alfred takes opening move for Round ${nextRound}.`);
 
-    saveLog(`Round ${round} Ended. Clock is now ${formatClock(newTime)}. Alfred relocated to ${newAILoc}.`);
-
-    showAlert(
-      `<strong style="color:var(--gold); font-size:1.2rem;">ROUND ${nextRound} BEGINS</strong><br><br>🕒 The grandfather clock strikes <strong>${formatClock(
-        newTime
-      )}</strong>.<br><br>🚨 Detective Alfred has relocated his search to the <strong>${newAILoc}</strong>!<br><br>Action points refreshed (8 AP).`
-    );
+    // Alfred moves FIRST at the start of next round!
+    executeAlfredTurn(nextRound);
   };
 
   // --- SOLVE / ACCUSATION ---
@@ -1967,11 +2423,18 @@ export default function App() {
     }
   };
 
-  const currentConn = gameDataRef.current.roomConnections[playerLocation] || {};
-  const currentNeighbors = Object.keys(currentConn)
-    .filter(k => k !== 'floor')
-    .map(k => currentConn[k])
-    .filter(Boolean);
+  const currentConn = gameDataRef.current.roomConnections[playerLocation] || REAL_CONNECTIONS_FALLBACK[playerLocation] || {};
+  const currentDirections: { dir: string; room: string }[] = [];
+  ['NORTH', 'SOUTH', 'EAST', 'WEST'].forEach(d => {
+    const dest = (currentConn as any)[d] || (currentConn as any)[d.toLowerCase()];
+    if (dest) {
+      currentDirections.push({
+        dir: d.charAt(0) + d.slice(1).toLowerCase(),
+        room: dest,
+      });
+    }
+  });
+  const currentNeighbors = currentDirections.map(cd => cd.room);
 
   // Check if a real suspect is currently in the player's room
   const currentSuspectInRoom = gameDataRef.current.solution?.entities.find(
@@ -2013,7 +2476,7 @@ export default function App() {
           </div>
           <button
             onClick={hardReset}
-            className="mt-8 border border-red-500 text-red-400 px-4 py-2 text-xs uppercase cursor-pointer"
+            className="mt-8 border border-red-500 text-red-700 px-4 py-2 text-xs uppercase cursor-pointer bg-white"
           >
             Emergency Reset
           </button>
@@ -2022,20 +2485,82 @@ export default function App() {
 
       {/* Main Container */}
       <div id="app-container">
+        {/* TOP NOTIFICATION BANNER (ALFRED CALL TO FORD / POLICE DISPATCH) */}
+        {topNotification && (
+          <div className="mx-2 mt-2 p-3 bg-[#fff5f5] text-[#7f1d1d] rounded-lg border-2 border-[#b91c1c] shadow-md flex items-center justify-between z-50 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl">🚨</span>
+              <div className="text-left">
+                <div className="font-bold text-[10px] uppercase tracking-wider text-[#b91c1c] font-mono">
+                  {topNotification.title}
+                </div>
+                <div className="text-xs font-serif font-bold text-stone-900 leading-snug">
+                  {topNotification.message}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setTopNotification(null)}
+              className="text-stone-500 hover:text-red-700 px-2 py-1 text-sm font-bold cursor-pointer"
+              title="Dismiss Dispatch"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Header Bar */}
         <header>
           <div className="w-full flex justify-between items-center">
             {activeSeed && (
-              <div id="stats-container" className="flex flex-col items-start gap-1">
-                <div className="text-amber-100 font-bold font-['Special_Elite'] text-base tracking-wide leading-none whitespace-nowrap">
-                  🕒 <span>{formatClock(timeSpent)}</span>
+              <div id="stats-container" className="flex items-center gap-2 flex-wrap">
+                {/* 1. Time Chronometer Gauge */}
+                <div
+                  title="Shift Chronometer (Advances each round)"
+                  className="stats-badge flex items-center gap-1.5 px-2.5 py-1 text-stone-800 cursor-default"
+                >
+                  <Clock className="w-3.5 h-3.5 text-[#8b6e2d]" />
+                  <div className="flex flex-col text-left leading-none">
+                    <span className="text-[9px] font-sans font-bold tracking-wider text-stone-500 uppercase">TIME</span>
+                    <span className="font-['Special_Elite'] font-bold text-xs text-stone-900 tracking-wide">
+                      {formatClock(timeSpent)}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-amber-200/90 font-bold font-['Special_Elite'] text-base tracking-wide leading-none whitespace-nowrap">
-                  ⚡ <span>{apSpent} / 8 AP</span>
-                  {freeAP > 0 && <span className="text-emerald-400 text-xs ml-1">(+{freeAP} Free)</span>}
+
+                {/* 2. Action Points (AP) Gauge */}
+                <div
+                  title="Shift Action Points (Resets every round)"
+                  className="stats-badge flex items-center gap-1.5 px-2.5 py-1 text-stone-800 cursor-default"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500/20" />
+                  <div className="flex flex-col text-left leading-none">
+                    <span className="text-[9px] font-sans font-bold tracking-wider text-stone-500 uppercase">ACTION PTS</span>
+                    <div className="flex items-center gap-1">
+                      <span className="font-['Special_Elite'] font-bold text-xs text-stone-900 tracking-wide">
+                        {apSpent} / 8 AP
+                      </span>
+                      {freeAP > 0 && (
+                        <span className="text-[10px] text-emerald-700 font-bold font-sans">
+                          (+{freeAP})
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-[#d4af37] font-bold font-['Special_Elite'] text-base">
-                  💰 <span>${tokens}</span>
+
+                {/* 3. Department Funds Gauge */}
+                <div
+                  title="Operational Cash on Hand"
+                  className="stats-badge flex items-center gap-1.5 px-2.5 py-1 text-stone-800 cursor-default"
+                >
+                  <Coins className="w-3.5 h-3.5 text-emerald-700" />
+                  <div className="flex flex-col text-left leading-none">
+                    <span className="text-[9px] font-sans font-bold tracking-wider text-stone-500 uppercase">FUNDS</span>
+                    <span className="font-['Special_Elite'] font-bold text-xs text-emerald-800 tracking-wide">
+                      ${tokens}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -2043,12 +2568,21 @@ export default function App() {
             {activeSeed && (
               <div className="flex gap-2 items-center ml-auto">
                 <button
+                  id="ford-btn"
+                  onClick={() => setModalCallFord(true)}
+                  title="Call Inspector Ford"
+                  aria-label="Call Inspector Ford"
+                  className="header-icon-btn !flex hover:scale-105 transition-transform cursor-pointer"
+                >
+                  <Phone className="w-4 h-4 text-[#8b6e2d]" />
+                </button>
+                <button
                   id="hq-btn"
                   onClick={() => setModalHQ(true)}
                   title="Crime Scene HQ"
                   className="header-icon-btn hover:scale-105 transition-transform cursor-pointer"
                 >
-                  <Building2 className="w-4 h-4 text-amber-300" />
+                  <Building2 className="w-4 h-4 text-[#8b6e2d]" />
                 </button>
                 <button
                   id="rival-btn"
@@ -2056,7 +2590,7 @@ export default function App() {
                   title="Department Standing"
                   className="header-icon-btn !flex hover:scale-105 transition-transform cursor-pointer"
                 >
-                  <Scale className="w-4 h-4 text-amber-300" />
+                  <Scale className="w-4 h-4 text-[#8b6e2d]" />
                 </button>
                 <button
                   id="notebook-btn"
@@ -2064,7 +2598,7 @@ export default function App() {
                   title="Investigation Log"
                   className="header-icon-btn !flex hover:scale-105 transition-transform cursor-pointer"
                 >
-                  <BookOpen className="w-4 h-4 text-amber-300" />
+                  <BookOpen className="w-4 h-4 text-[#8b6e2d]" />
                 </button>
               </div>
             )}
@@ -2082,22 +2616,22 @@ export default function App() {
 
         {/* ALWAYS-VISIBLE SMALL CURRENT LOCATION TAB */}
         {activeSeed && activeView === 'view-main' && (
-          <div className="sticky top-0 z-20 bg-[#1c1917]/95 backdrop-blur-md border-b-2 border-[#8b6e2d] px-3.5 py-2 flex items-center justify-between text-stone-200 shadow-md">
+          <div className="sticky top-0 z-20 bg-[#fdfbf7]/95 backdrop-blur-md border-b-2 border-[#8b6e2d] px-3.5 py-2 flex items-center justify-between text-stone-900 shadow-xs">
             <div className="flex items-center gap-2.5">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 text-xs">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#faecd0] text-[#8b6e2d] border border-[#8b6e2d]/60 text-xs shadow-2xs">
                 📍
               </span>
               <div className="flex flex-col text-left">
-                <span className="text-[9px] font-bold tracking-widest text-[#d4af37] uppercase leading-none mb-0.5">
+                <span className="text-[9px] font-bold tracking-widest text-[#8b6e2d] uppercase leading-none mb-0.5">
                   Current Location
                 </span>
-                <span className="font-serif text-sm sm:text-base font-bold text-amber-100 tracking-wide leading-none">
+                <span className="font-serif text-sm sm:text-base font-bold text-stone-900 tracking-wide leading-none">
                   {playerLocation}
                 </span>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-stone-800/90 text-amber-200/90 border border-stone-700/70 font-mono">
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#f5eedf] text-[#8b6e2d] border border-[#8b6e2d]/50 font-mono">
                 {currentConn.floor === 'SECOND' ? '1st Floor' : 'Ground Floor'}
               </span>
             </div>
@@ -2106,7 +2640,7 @@ export default function App() {
 
         {/* Phase Selector Bar */}
         {activeSeed && activeView === 'view-main' && (
-          <div id="phase-selector-bar" className="flex flex-col w-full border-b border-[#8b6e2d]/60 bg-[#1c1815]">
+          <div id="phase-selector-bar" className="flex flex-col w-full border-b border-[#8b6e2d]/60 bg-[#f5eedf]">
             <div className="flex w-full">
               <button
                 className={`phase-btn ${activePhase === 'MOVE' ? 'active' : ''} ${
@@ -2116,7 +2650,7 @@ export default function App() {
               >
                 <Footprints
                   className={`w-4 h-4 transition-transform ${
-                    activePhase === 'MOVE' ? 'anim-step-walk text-[#d4af37]' : 'text-stone-400'
+                    activePhase === 'MOVE' ? 'anim-step-walk text-[#8b0000]' : 'text-stone-500'
                   }`}
                 />
                 <span>1. Move</span>
@@ -2130,7 +2664,7 @@ export default function App() {
               >
                 <Search
                   className={`w-4 h-4 transition-transform ${
-                    activePhase === 'ACTION' ? 'anim-search-sweep text-[#d4af37]' : 'text-stone-400'
+                    activePhase === 'ACTION' ? 'anim-search-sweep text-[#8b0000]' : 'text-stone-500'
                   }`}
                 />
                 <span>2. Action</span>
@@ -2143,7 +2677,7 @@ export default function App() {
               >
                 <FileText
                   className={`w-4 h-4 transition-transform ${
-                    activePhase === 'LOG' ? 'anim-quill-tilt text-[#d4af37]' : 'text-stone-400'
+                    activePhase === 'LOG' ? 'anim-quill-tilt text-[#8b0000]' : 'text-stone-500'
                   }`}
                 />
                 <span>3. Log</span>
@@ -2151,7 +2685,7 @@ export default function App() {
             </div>
             <button
               id="end-round-btn"
-              className="my-2 mx-auto py-1 px-4 w-auto text-xs font-serif font-bold text-red-300 bg-red-950/70 hover:bg-red-900/80 border border-red-700/80 rounded-full tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs transition-all hover:scale-102"
+              className="my-2 mx-auto py-1 px-4 w-auto text-xs font-serif font-bold text-red-900 bg-red-100 hover:bg-red-200 border border-red-400 rounded-full tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs transition-all hover:scale-102"
               onClick={() => setModalConfirmEnd(true)}
             >
               <span>🛑</span>
@@ -2171,23 +2705,23 @@ export default function App() {
 
             <div className="flex flex-col gap-3 max-w-sm mx-auto w-full">
               <button
-                className="w-full bg-[#2b251f] hover:bg-[#383027] border border-[#8b6e2d] hover:border-[#d4af37] text-amber-100 rounded-lg p-4 flex items-center justify-between shadow-md transition-all duration-200 cursor-pointer group"
+                className="w-full bg-[#fdfbf7] hover:bg-[#f5eedf] border-2 border-[#8b6e2d] hover:border-[#8b0000] text-stone-900 rounded-lg p-4 flex items-center justify-between shadow-sm transition-all duration-200 cursor-pointer group"
                 onClick={() => setModalModeSelect(true)}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 group-hover:scale-105 transition-transform flex-shrink-0">
-                    <Sparkles className="w-5 h-5" />
+                  <div className="w-11 h-11 rounded-full bg-[#faecd0] border border-[#8b6e2d] flex items-center justify-center text-[#8b6e2d] group-hover:scale-105 transition-transform flex-shrink-0">
+                    <Sparkles className="w-5 h-5 text-[#8b0000]" />
                   </div>
                   <div className="text-left">
-                    <div className="font-serif font-bold text-lg text-amber-100 group-hover:text-amber-200">
+                    <div className="font-serif font-bold text-lg text-stone-900 group-hover:text-[#8b0000]">
                       Generate New Case
                     </div>
-                    <div className="text-xs text-stone-400 font-sans">
+                    <div className="text-xs text-stone-600 font-sans">
                       Seed a fresh murder investigation & board
                     </div>
                   </div>
                 </div>
-                <span className="text-amber-400 text-sm font-bold">➔</span>
+                <span className="text-[#8b0000] text-sm font-bold">➔</span>
               </button>
 
               <div className="text-center text-[#8b6e2d] text-xs uppercase font-bold tracking-widest my-1">
@@ -2239,58 +2773,54 @@ export default function App() {
             {/* PANE: MOVE */}
             {activePhase === 'MOVE' && (
               <div id="pane-move" className="flex flex-col gap-3">
-                <div className="bg-[#241d18] border border-[#8b6e2d]/60 rounded-lg p-3.5 shadow-xs text-left">
-                  <label className="text-xs font-bold text-[#d4af37] uppercase block mb-1.5 flex items-center gap-1.5">
-                    <Compass className="w-4 h-4 text-amber-400" />
-                    <span>Select Connected Corridor or Room:</span>
+                <div className="bg-[#fdfbf7] border border-[#8b6e2d]/60 rounded-lg p-3.5 shadow-xs text-left">
+                  <label className="text-xs font-bold text-[#8b6e2d] uppercase block mb-1.5 flex items-center gap-1.5 font-serif">
+                    <Compass className="w-4 h-4 text-[#8b0000]" />
+                    <span>Select Connected Passage or Room:</span>
                   </label>
                   <select
                     value={moveDropdownVal}
                     onChange={e => setMoveDropdownVal(e.target.value)}
-                    className="w-full bg-[#1c1714] border border-[#8b6e2d] text-amber-100 rounded p-2 text-sm font-medium"
+                    className="w-full bg-[#faf6ee] border border-[#8b6e2d]/70 text-stone-900 rounded p-2.5 text-sm font-medium focus:outline-hidden focus:ring-1 focus:ring-[#8b6e2d]"
                   >
                     <option value="">-- Choose Connected Room --</option>
-                    {currentNeighbors.map((n, idx) => {
-                      const isAlfredRoom = n === (aiStats.loc || localStorage.getItem('aiLoc_' + activeSeed));
+                    {currentDirections.map(({ dir, room }, idx) => {
+                      const isAlfredRoom = room === (aiStats.loc || localStorage.getItem('aiLoc_' + activeSeed));
+                      const lockedChamber = localStorage.getItem('lockedRoom_' + activeSeed);
+                      const isLockedRoom = room === lockedChamber && !isRoomUnlocked;
+                      const isDisabled = isAlfredRoom || isLockedRoom;
                       return (
-                        <option key={idx} value={n} disabled={isAlfredRoom}>
-                          {n} {isAlfredRoom ? '⛔ (Occupied by Alfred • Forbidden)' : '(Direct Corridor • 1 AP)'}
+                        <option
+                          key={idx}
+                          value={room}
+                          disabled={isDisabled}
+                          className={isAlfredRoom ? 'text-red-700 bg-red-50' : isLockedRoom ? 'text-amber-800 bg-amber-50 font-bold' : 'text-stone-900'}
+                        >
+                          {room} — {dir} {isAlfredRoom ? '(⛔ Occupied by Alfred • Forbidden)' : isLockedRoom ? '(🔒 Padlocked • Key Card Required)' : '(1 AP ⚡)'}
                         </option>
                       );
                     })}
-                    {gameDataRef.current.locations
-                      .map(l => l.id)
-                      .filter(id => !currentNeighbors.includes(id) && id !== playerLocation)
-                      .slice(0, 4)
-                      .map((other, idx) => {
-                        const isAlfredRoom = other === (aiStats.loc || localStorage.getItem('aiLoc_' + activeSeed));
-                        return (
-                          <option key={'other-' + idx} value={other} disabled={isAlfredRoom}>
-                            {other} {isAlfredRoom ? '⛔ (Occupied by Alfred • Forbidden)' : '(Via Staircase / Hall • 1 AP)'}
-                          </option>
-                        );
-                      })}
                   </select>
                 </div>
 
                 <button
-                  className="w-full bg-[#241d18] hover:bg-[#2f251e] active:bg-[#1c1713] border border-[#8b6e2d]/60 hover:border-[#d4af37] text-stone-200 rounded-lg p-3.5 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer group"
+                  className="w-full bg-[#fdfbf7] hover:bg-[#f5eedf] active:bg-[#ede5d5] border border-[#8b6e2d]/60 hover:border-[#8b0000] text-stone-900 rounded-lg p-3.5 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer group"
                   onClick={handleMoveRoom}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-amber-950/80 border border-[#8b6e2d] flex items-center justify-center text-amber-300 group-hover:scale-105 group-hover:bg-amber-900 transition-all flex-shrink-0">
-                      <Footprints className="w-5 h-5 text-amber-300" />
+                    <div className="w-10 h-10 rounded-full bg-[#faecd0] border border-[#8b6e2d] flex items-center justify-center text-[#8b0000] group-hover:scale-105 transition-all flex-shrink-0">
+                      <Footprints className="w-5 h-5 text-[#8b0000]" />
                     </div>
                     <div className="text-left">
-                      <div className="font-serif font-bold text-base text-amber-100 leading-tight group-hover:text-[#d4af37] transition-colors">
+                      <div className="font-serif font-bold text-base text-stone-900 leading-tight group-hover:text-[#8b0000] transition-colors">
                         Walk to Room
                       </div>
-                      <div className="text-xs text-stone-400 font-sans mt-0.5">
-                        Proceed to chosen connected corridor or wing
+                      <div className="text-xs text-stone-600 font-sans mt-0.5">
+                        Proceed through doorway into selected chamber
                       </div>
                     </div>
                   </div>
-                  <div className="text-[11px] font-bold font-mono px-2.5 py-1 rounded bg-[#181411] text-amber-300 border border-[#8b6e2d]/60">
+                  <div className="text-[11px] font-bold font-mono px-2.5 py-1 rounded bg-[#f5eedf] text-[#8b6e2d] border border-[#8b6e2d]/60">
                     1 AP ⚡
                   </div>
                 </button>
@@ -2302,75 +2832,75 @@ export default function App() {
               <div id="pane-action" className="flex flex-col gap-2.5">
                 {/* 1. Canvass Area */}
                 <button
-                  className="w-full bg-[#241d18] hover:bg-[#2f251e] active:bg-[#1c1713] border border-[#8b6e2d]/60 hover:border-[#d4af37] text-stone-200 rounded-lg p-3.5 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
+                  className="w-full bg-[#fdfbf7] hover:bg-[#f5eedf] active:bg-[#ede5d5] border border-[#8b6e2d]/60 hover:border-[#8b0000] text-stone-900 rounded-lg p-3.5 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
                   onClick={() => setModalScanRegion(true)}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-amber-950/80 border border-[#8b6e2d] flex items-center justify-center text-amber-300 flex-shrink-0 group-hover:scale-105 group-hover:bg-amber-900 transition-all">
-                      <Search className="w-5 h-5 text-amber-300" />
+                    <div className="w-10 h-10 rounded-full bg-[#faecd0] border border-[#8b6e2d] flex items-center justify-center text-[#8b0000] flex-shrink-0 group-hover:scale-105 transition-all">
+                      <Search className="w-5 h-5 text-[#8b0000]" />
                     </div>
                     <div>
-                      <div className="font-serif font-bold text-base text-amber-100 leading-tight group-hover:text-[#d4af37] transition-colors">
+                      <div className="font-serif font-bold text-base text-stone-900 leading-tight group-hover:text-[#8b0000] transition-colors">
                         Canvass Area
                       </div>
-                      <div className="text-xs text-stone-400 font-sans mt-0.5">
+                      <div className="text-xs text-stone-600 font-sans mt-0.5">
                         Question witnesses across mansion regions
                       </div>
                     </div>
                   </div>
-                  <div className="text-[11px] font-bold font-mono px-2.5 py-1 rounded bg-[#181411] text-amber-300 border border-[#8b6e2d]/60 flex-shrink-0">
+                  <div className="text-[11px] font-bold font-mono px-2.5 py-1 rounded bg-[#f5eedf] text-[#8b6e2d] border border-[#8b6e2d]/60 flex-shrink-0">
                     1–3 AP ⚡
                   </div>
                 </button>
 
                 {/* 2. Toss the Room */}
                 <button
-                  className="w-full bg-[#241d18] hover:bg-[#2f251e] active:bg-[#1c1713] border border-[#8b6e2d]/60 hover:border-[#d4af37] text-stone-200 rounded-lg p-3.5 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
+                  className="w-full bg-[#fdfbf7] hover:bg-[#f5eedf] active:bg-[#ede5d5] border border-[#8b6e2d]/60 hover:border-[#8b0000] text-stone-900 rounded-lg p-3.5 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
                   onClick={handleTossRoom}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-stone-900 border border-stone-700 flex items-center justify-center text-stone-300 flex-shrink-0 group-hover:scale-105 group-hover:border-[#8b6e2d] transition-all">
-                      <Eye className="w-5 h-5 text-amber-400" />
+                    <div className="w-10 h-10 rounded-full bg-[#faecd0] border border-[#8b6e2d] flex items-center justify-center text-[#8b6e2d] flex-shrink-0 group-hover:scale-105 transition-all">
+                      <Eye className="w-5 h-5 text-[#8b6e2d]" />
                     </div>
                     <div>
-                      <div className="font-serif font-bold text-base text-amber-100 leading-tight group-hover:text-[#d4af37] transition-colors">
+                      <div className="font-serif font-bold text-base text-stone-900 leading-tight group-hover:text-[#8b0000] transition-colors">
                         Toss the Room
                       </div>
-                      <div className="text-xs text-stone-400 font-sans mt-0.5">
-                        Search cabinets, carpets, and concealed spaces
+                      <div className="text-xs text-stone-600 font-sans mt-0.5">
+                        Search cabinets, carpets, and concealed spaces (-1 Rep)
                       </div>
                     </div>
                   </div>
-                  <div className="text-[11px] font-bold font-mono px-2.5 py-1 rounded bg-[#181411] text-amber-300 border border-[#8b6e2d]/60 flex-shrink-0">
-                    4 AP ⚡
+                  <div className="text-[11px] font-bold font-mono px-2.5 py-1 rounded bg-amber-50 text-red-900 border border-red-300 flex-shrink-0">
+                    4 AP ⚡ • -1 Rep ⚖️
                   </div>
                 </button>
 
-                {/* 3. Interrogate Suspect (NEVER REVEALS SUSPECT NAME BEFORE TAKING ACTION) */}
+                {/* 3. Interrogate Suspect */}
                 <button
                   disabled={!currentSuspectInRoom}
                   onClick={handleInterrogate}
                   className={`w-full border rounded-lg p-3.5 flex items-center justify-between shadow-xs transition-all duration-200 text-left group ${
                     currentSuspectInRoom
-                      ? 'bg-[#241d18] hover:bg-[#2f251e] border-[#8b6e2d]/60 hover:border-[#d4af37] cursor-pointer text-stone-200'
-                      : 'bg-[#1b1714] border-stone-800 opacity-60 cursor-not-allowed text-stone-500'
+                      ? 'bg-[#fdfbf7] hover:bg-[#f5eedf] border-[#8b6e2d]/60 hover:border-[#8b0000] cursor-pointer text-stone-900'
+                      : 'bg-stone-100 border-stone-300 opacity-60 cursor-not-allowed text-stone-400'
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
                         currentSuspectInRoom
-                          ? 'bg-red-950/80 border border-red-700 text-red-300 group-hover:scale-105 group-hover:bg-red-900'
-                          : 'bg-stone-900 border-stone-800 text-stone-600'
+                          ? 'bg-red-100 border border-red-400 text-red-900 group-hover:scale-105'
+                          : 'bg-stone-200 border-stone-300 text-stone-400'
                       }`}
                     >
                       <MessageSquare className="w-5 h-5" />
                     </div>
                     <div>
-                      <div className="font-serif font-bold text-base text-amber-100 leading-tight group-hover:text-[#d4af37] transition-colors">
+                      <div className="font-serif font-bold text-base text-stone-900 leading-tight group-hover:text-[#8b0000] transition-colors">
                         Interrogate Suspect
                       </div>
-                      <div className="text-xs text-stone-400 font-sans mt-0.5">
+                      <div className="text-xs text-stone-500 font-sans mt-0.5">
                         {currentSuspectInRoom
                           ? 'Question the occupant present in this room'
                           : 'No suspect present in this room'}
@@ -2380,8 +2910,8 @@ export default function App() {
                   <div
                     className={`text-[11px] font-bold font-mono px-2.5 py-1 rounded border flex-shrink-0 ${
                       currentSuspectInRoom
-                        ? 'bg-[#181411] text-amber-300 border-[#8b6e2d]/60'
-                        : 'bg-stone-900 text-stone-600 border-stone-800'
+                        ? 'bg-[#f5eedf] text-[#8b6e2d] border-[#8b6e2d]/60'
+                        : 'bg-stone-200 text-stone-500 border-stone-300'
                     }`}
                   >
                     {currentSuspectInRoom ? '3 AP ⚡' : 'None'}
@@ -2390,23 +2920,23 @@ export default function App() {
 
                 {/* 4. Bribe Staff */}
                 <button
-                  className="w-full bg-[#241d18] hover:bg-[#2f251e] active:bg-[#1c1713] border border-[#8b6e2d]/60 hover:border-[#d4af37] text-stone-200 rounded-lg p-3.5 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
+                  className="w-full bg-[#fdfbf7] hover:bg-[#f5eedf] active:bg-[#ede5d5] border border-[#8b6e2d]/60 hover:border-[#8b0000] text-stone-900 rounded-lg p-3.5 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
                   onClick={() => setModalWorker(true)}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-950/80 border border-blue-700 flex items-center justify-center text-blue-300 flex-shrink-0 group-hover:scale-105 group-hover:bg-blue-900 transition-all">
-                      <Coins className="w-5 h-5 text-blue-300" />
+                    <div className="w-10 h-10 rounded-full bg-blue-100 border border-blue-400 flex items-center justify-center text-blue-800 flex-shrink-0 group-hover:scale-105 transition-all">
+                      <Coins className="w-5 h-5 text-blue-800" />
                     </div>
                     <div>
-                      <div className="font-serif font-bold text-base text-amber-100 leading-tight group-hover:text-[#d4af37] transition-colors">
+                      <div className="font-serif font-bold text-base text-stone-900 leading-tight group-hover:text-[#8b0000] transition-colors">
                         Bribe Mansion Staff
                       </div>
-                      <div className="text-xs text-stone-400 font-sans mt-0.5">
+                      <div className="text-xs text-stone-600 font-sans mt-0.5">
                         Pay servants to track guest movements
                       </div>
                     </div>
                   </div>
-                  <div className="text-[11px] font-bold font-mono px-2.5 py-1 rounded bg-[#181411] text-blue-300 border border-blue-800 flex-shrink-0">
+                  <div className="text-[11px] font-bold font-mono px-2.5 py-1 rounded bg-blue-50 text-blue-800 border border-blue-300 flex-shrink-0">
                     $$ Cash
                   </div>
                 </button>
@@ -2416,29 +2946,29 @@ export default function App() {
                   <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-[#8b6e2d]/30">
                     {hasPoliceTape && (
                       <button
-                        className="w-full bg-red-950/90 hover:bg-red-900 text-amber-100 border border-red-700 rounded-lg p-3 flex items-center justify-between shadow-xs cursor-pointer"
-                        onClick={() => setModalPoliceTape(true)}
+                        className="w-full bg-amber-50 hover:bg-amber-100 text-stone-900 border-2 border-amber-600 rounded-lg p-3 flex items-center justify-between shadow-xs cursor-pointer transition-all"
+                        onClick={handleDeployPoliceTape}
                       >
                         <div className="flex items-center gap-2.5">
-                          <ShieldAlert className="w-5 h-5 text-amber-400" />
-                          <span className="font-serif font-bold text-sm">Deploy Police Tape</span>
+                          <ShieldAlert className="w-5 h-5 text-amber-700" />
+                          <span className="font-serif font-bold text-sm text-stone-900">Deploy Police Tape in {playerLocation}</span>
                         </div>
-                        <span className="text-[10px] uppercase font-bold bg-red-900 px-2 py-0.5 rounded text-amber-200">
-                          Tactical
+                        <span className="text-[10px] uppercase font-bold bg-amber-200 text-amber-900 border border-amber-400 px-2 py-0.5 rounded">
+                          Deploy Tape
                         </span>
                       </button>
                     )}
                     {hasSabotageTrap && (
                       <button
-                        className="w-full bg-stone-900 hover:bg-stone-850 text-amber-100 border border-amber-600/70 rounded-lg p-3 flex items-center justify-between shadow-xs cursor-pointer"
-                        onClick={() => setModalSabotage(true)}
+                        className="w-full bg-red-50 hover:bg-red-100 text-stone-900 border-2 border-red-600 rounded-lg p-3 flex items-center justify-between shadow-xs cursor-pointer transition-all"
+                        onClick={handleDeploySabotageTrap}
                       >
                         <div className="flex items-center gap-2.5">
-                          <AlertTriangle className="w-5 h-5 text-amber-400" />
-                          <span className="font-serif font-bold text-sm">Deploy Sabotage Trap</span>
+                          <AlertTriangle className="w-5 h-5 text-red-700" />
+                          <span className="font-serif font-bold text-sm text-stone-900">Deploy Sabotage Trap in {playerLocation}</span>
                         </div>
-                        <span className="text-[10px] uppercase font-bold bg-amber-950 px-2 py-0.5 rounded text-amber-200">
-                          Trap
+                        <span className="text-[10px] uppercase font-bold bg-red-200 text-red-900 border border-red-400 px-2 py-0.5 rounded">
+                          Deploy Snare
                         </span>
                       </button>
                     )}
@@ -2452,60 +2982,60 @@ export default function App() {
               <div id="pane-log" className="flex flex-col gap-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <button
-                    className="bg-[#241d18] hover:bg-[#2f251e] border border-[#8b6e2d]/60 hover:border-[#d4af37] text-stone-200 rounded-lg p-3 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
+                    className="bg-[#fdfbf7] hover:bg-[#f5eedf] border border-[#8b6e2d]/60 hover:border-[#8b0000] text-stone-900 rounded-lg p-3 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
                     onClick={() => setModalBribe(true)}
                   >
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-full bg-emerald-950/80 border border-emerald-700 flex items-center justify-center text-emerald-300 flex-shrink-0 group-hover:scale-105">
+                      <div className="w-9 h-9 rounded-full bg-emerald-100 border border-emerald-400 flex items-center justify-center text-emerald-800 flex-shrink-0 group-hover:scale-105">
                         <Coins className="w-4 h-4" />
                       </div>
                       <div>
-                        <div className="font-serif font-bold text-sm text-amber-100 group-hover:text-[#d4af37]">
+                        <div className="font-serif font-bold text-sm text-stone-900 group-hover:text-[#8b0000]">
                           Bribe Informant
                         </div>
-                        <div className="text-[11px] text-stone-400">
+                        <div className="text-[11px] text-stone-600">
                           Trade funds for intel
                         </div>
                       </div>
                     </div>
-                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-[#181411] text-emerald-300 border border-emerald-800">
+                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300">
                       Free AP
                     </span>
                   </button>
 
                   <button
-                    className="bg-[#241d18] hover:bg-[#2f251e] border border-[#8b6e2d]/60 hover:border-[#d4af37] text-stone-200 rounded-lg p-3 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
+                    className="bg-[#fdfbf7] hover:bg-[#f5eedf] border border-[#8b6e2d]/60 hover:border-[#8b0000] text-stone-900 rounded-lg p-3 flex items-center justify-between shadow-xs transition-all duration-200 cursor-pointer text-left group"
                     onClick={() => setModalFieldReport(true)}
                   >
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-full bg-blue-950/80 border border-blue-700 flex items-center justify-center text-blue-300 flex-shrink-0 group-hover:scale-105">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 border border-blue-400 flex items-center justify-center text-blue-800 flex-shrink-0 group-hover:scale-105">
                         <FileText className="w-4 h-4" />
                       </div>
                       <div>
-                        <div className="font-serif font-bold text-sm text-amber-100 group-hover:text-[#d4af37]">
+                        <div className="font-serif font-bold text-sm text-stone-900 group-hover:text-[#8b0000]">
                           Search Report
                         </div>
-                        <div className="text-[11px] text-stone-400">
+                        <div className="text-[11px] text-stone-600">
                           Submit field notes
                         </div>
                       </div>
                     </div>
-                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-[#181411] text-amber-300 border border-[#8b6e2d]/60">
+                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-[#f5eedf] text-[#8b6e2d] border border-[#8b6e2d]/60">
                       {round % 2 !== 0 ? 'Free' : '3 AP'}
                     </span>
                   </button>
                 </div>
 
-                <div className="mt-4 bg-[#241d18] p-3 border border-[#8b6e2d] rounded-lg">
-                  <h4 className="font-serif font-bold text-base text-[#d4af37] border-b border-stone-800 pb-1 mb-2">
+                <div className="mt-4 bg-[#fdfbf7] p-3 border border-[#8b6e2d] rounded-lg shadow-xs text-left">
+                  <h4 className="font-serif font-bold text-base text-[#8b6e2d] border-b border-[#8b6e2d]/40 pb-1 mb-2">
                     Investigation Notebook
                   </h4>
-                  <ul className="text-sm font-serif italic text-stone-300 max-h-56 overflow-y-auto space-y-1">
+                  <ul className="text-sm font-serif italic text-stone-800 max-h-56 overflow-y-auto space-y-1">
                     {notebookLogs.length === 0 ? (
                       <li className="text-stone-500">No notes written yet.</li>
                     ) : (
                       notebookLogs.slice().reverse().map((log, i) => (
-                        <li key={i} className="border-b border-stone-800/80 pb-1">
+                        <li key={i} className="border-b border-stone-200 pb-1">
                           • <span dangerouslySetInnerHTML={{ __html: log }} />
                         </li>
                       ))
@@ -2531,7 +3061,7 @@ export default function App() {
             <select
               value={solveKillerName}
               onChange={e => setSolveKillerName(e.target.value)}
-              className="bg-[#241d18] border-2 border-[#8b6e2d] text-amber-100"
+              className="bg-[#faf6ee] border-2 border-[#8b6e2d] text-stone-900 rounded p-2 text-sm font-medium"
             >
               <option value="">-- Identify Culprit --</option>
               {gameDataRef.current.suspects.map((s, idx) => (
@@ -2545,7 +3075,7 @@ export default function App() {
             <select
               value={solveKillerLoc}
               onChange={e => setSolveKillerLoc(e.target.value)}
-              className="bg-[#241d18] border-2 border-[#8b6e2d] text-amber-100"
+              className="bg-[#faf6ee] border-2 border-[#8b6e2d] text-stone-900 rounded p-2 text-sm font-medium"
             >
               <option value="">-- Room Location --</option>
               {gameDataRef.current.locations.map((l, idx) => (
@@ -2559,7 +3089,7 @@ export default function App() {
             <select
               value={solveWeaponName}
               onChange={e => setSolveWeaponName(e.target.value)}
-              className="bg-[#241d18] border-2 border-[#8b6e2d] text-amber-100"
+              className="bg-[#faf6ee] border-2 border-[#8b6e2d] text-stone-900 rounded p-2 text-sm font-medium"
             >
               <option value="">-- Murder Weapon --</option>
               {gameDataRef.current.weapons.map((w, idx) => (
@@ -2959,56 +3489,56 @@ export default function App() {
       {/* 8. RIVAL TRACKER MODAL */}
       {modalRival && (
         <div className="modal-bg !flex">
-          <div className="notebook-content relative !h-auto max-h-[85vh] text-stone-200">
+          <div className="notebook-content relative !h-auto max-h-[85vh] text-stone-900 !bg-[#fdfaf5] border-2 border-[#8b6e2d] shadow-2xl p-5">
             <span
               onClick={() => setModalRival(false)}
-              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-400 font-bold cursor-pointer"
+              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-700 font-bold cursor-pointer"
             >
               ✕
             </span>
-            <h2 className="text-center font-serif text-2xl font-bold border-b-2 border-[#8b6e2d] pb-2 mb-4 uppercase text-[#d4af37]">
+            <h2 className="text-center font-serif text-2xl font-bold border-b-2 border-[#8b6e2d] pb-2 mb-4 uppercase text-[#8b0000]">
               Department Standings
             </h2>
 
             {/* Detective Vance (Player) */}
-            <div className="bg-[#241d18] border-2 border-[#8b6e2d] rounded-lg p-3.5 mb-3 shadow-xs">
-              <div className="border-b border-stone-800 pb-1 mb-2 text-center font-serif font-bold text-lg text-amber-100">
+            <div className="bg-[#faf6ee] border-2 border-[#8b6e2d]/70 rounded-lg p-3.5 mb-3 shadow-xs">
+              <div className="border-b border-[#8b6e2d]/30 pb-1 mb-2 text-center font-serif font-bold text-lg text-stone-900">
                 👤 Detective Vance (You)
               </div>
               <div className="flex justify-between text-sm py-1">
-                <span className="text-stone-400">🎖️ Rank:</span>
-                <span className="font-bold text-amber-300">{playerRank}</span>
+                <span className="text-stone-600">🎖️ Rank:</span>
+                <span className="font-bold text-[#8b6e2d]">{playerRank}</span>
               </div>
               <div className="flex justify-between text-sm py-1">
-                <span className="text-stone-400">⚖️ Reputation:</span>
-                <span className="font-bold text-stone-200">{playerRep}</span>
+                <span className="text-stone-600">⚖️ Reputation:</span>
+                <span className="font-bold text-stone-900">{playerRep}</span>
               </div>
-              <div className="flex justify-between text-sm bg-[#1a1512] p-2 rounded mt-2 border border-[#8b6e2d]/40">
-                <span className="text-stone-300">🏆 Score:</span>
-                <strong className="text-[#d4af37]">{playerScore} Pts</strong>
+              <div className="flex justify-between text-sm bg-[#f5eedf] p-2 rounded mt-2 border border-[#8b6e2d]/40">
+                <span className="text-stone-700">🏆 Score:</span>
+                <strong className="text-[#8b0000] font-bold">{playerScore} Pts</strong>
               </div>
             </div>
 
             {/* Detective Alfred (AI) */}
-            <div className="bg-[#281816] border-2 border-red-850 rounded-lg p-3.5 mb-4 shadow-xs">
-              <div className="border-b border-red-950 pb-1 mb-2 text-center font-serif font-bold text-lg text-red-300">
+            <div className="bg-[#fff5f5] border-2 border-red-300 rounded-lg p-3.5 mb-4 shadow-xs">
+              <div className="border-b border-red-200 pb-1 mb-2 text-center font-serif font-bold text-lg text-red-900">
                 🤖 Detective Alfred (Rival)
               </div>
               <div className="flex justify-between text-sm py-1">
-                <span className="text-stone-400">📍 Current Room:</span>
-                <strong className="text-amber-200">{aiStats.loc || 'Unknown'}</strong>
+                <span className="text-stone-600">📍 Current Room:</span>
+                <strong className="text-red-950 font-bold">{aiStats.loc || 'Unknown'}</strong>
               </div>
               <div className="flex justify-between text-sm py-1">
-                <span className="text-stone-400">🔍 Rooms Cleared:</span>
-                <strong className="text-stone-200">{aiStats.cleared || 0}</strong>
+                <span className="text-stone-600">🔍 Rooms Cleared:</span>
+                <strong className="text-stone-900">{aiStats.cleared || 0}</strong>
               </div>
               <div className="flex justify-between text-sm py-1">
-                <span className="text-stone-400">📡 Area Scans:</span>
-                <strong className="text-stone-200">{aiStats.scans || 0}</strong>
+                <span className="text-stone-600">📡 Area Scans:</span>
+                <strong className="text-stone-900">{aiStats.scans || 0}</strong>
               </div>
-              <div className="flex justify-between text-sm bg-[#1c1210] p-2 rounded mt-2 border border-red-900/40">
-                <span className="text-stone-300">🏆 Score:</span>
-                <strong className="text-red-400">{aiStats.score || 0} Pts</strong>
+              <div className="flex justify-between text-sm bg-red-100/70 p-2 rounded mt-2 border border-red-300">
+                <span className="text-stone-700">🏆 Score:</span>
+                <strong className="text-red-800">{aiStats.score || 0} Pts</strong>
               </div>
             </div>
 
@@ -3022,27 +3552,27 @@ export default function App() {
       {/* 9. CRIME SCENE HQ */}
       {modalHQ && (
         <div className="modal-bg !flex">
-          <div className="notebook-content relative !h-auto max-h-[85vh] text-stone-200">
+          <div className="notebook-content relative !h-auto max-h-[85vh] text-stone-900 !bg-[#fdfaf5] border-2 border-[#8b6e2d] shadow-2xl p-5">
             <span
               onClick={() => setModalHQ(false)}
-              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-400 font-bold cursor-pointer"
+              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-700 font-bold cursor-pointer"
             >
               ✕
             </span>
-            <h2 className="text-center font-serif text-2xl font-bold border-b-2 border-[#8b6e2d] pb-2 mb-2 uppercase text-[#d4af37]">
+            <h2 className="text-center font-serif text-2xl font-bold border-b-2 border-[#8b6e2d] pb-2 mb-2 uppercase text-[#8b0000]">
               Crime Scene HQ
             </h2>
-            <p className="text-center text-xs italic text-stone-400 mb-4">
+            <p className="text-center text-xs italic text-stone-600 mb-4">
               Review case progress, starting clues, board schematics, or prepare final arrest warrant.
             </p>
 
             {/* INITIAL BOARD SETUP REVIEW */}
-            <div className="bg-[#241d18] border border-[#8b6e2d] rounded-lg p-3.5 mb-3 text-center shadow-xs">
-              <strong className="text-amber-200 font-serif text-base flex items-center justify-center gap-1.5 mb-1">
-                <Lock className="w-4 h-4 text-amber-400" />
+            <div className="bg-[#faf6ee] border border-[#8b6e2d]/70 rounded-lg p-3.5 mb-3 text-center shadow-xs">
+              <strong className="text-stone-900 font-serif text-base flex items-center justify-center gap-1.5 mb-1">
+                <Lock className="w-4 h-4 text-[#8b6e2d]" />
                 Physical Board Setup & Locked Room
               </strong>
-              <p className="text-xs text-stone-300 mb-3">
+              <p className="text-xs text-stone-600 mb-3">
                 Inspect the locked chamber illustration, padlock token location, and 8 mansion item placement rooms.
               </p>
               <button
@@ -3057,12 +3587,12 @@ export default function App() {
             </div>
 
             {/* EVIDENCE & CASE BRIEFING */}
-            <div className="bg-[#241d18] border border-[#8b6e2d] rounded-lg p-3.5 mb-3 text-center shadow-xs">
-              <strong className="text-amber-200 font-serif text-base flex items-center justify-center gap-1.5 mb-1">
-                <FileText className="w-4 h-4 text-amber-400" />
+            <div className="bg-[#faf6ee] border border-[#8b6e2d]/70 rounded-lg p-3.5 mb-3 text-center shadow-xs">
+              <strong className="text-stone-900 font-serif text-base flex items-center justify-center gap-1.5 mb-1">
+                <FileText className="w-4 h-4 text-[#8b6e2d]" />
                 The Evidence & Case Briefing
               </strong>
-              <p className="text-xs text-stone-300 mb-3">
+              <p className="text-xs text-stone-600 mb-3">
                 Review your precinct case file, autopsy findings, and starting clues.
               </p>
               <button
@@ -3082,12 +3612,12 @@ export default function App() {
             </div>
 
             {/* SUSPECTS GALLERY BUTTON IN CAPS */}
-            <div className="bg-[#241d18] border border-[#8b6e2d] rounded-lg p-3.5 mb-3 text-center shadow-xs">
-              <strong className="text-amber-200 font-serif text-base flex items-center justify-center gap-1.5 mb-1">
-                <Users className="w-4 h-4 text-amber-400" />
+            <div className="bg-[#faf6ee] border border-[#8b6e2d]/70 rounded-lg p-3.5 mb-3 text-center shadow-xs">
+              <strong className="text-stone-900 font-serif text-base flex items-center justify-center gap-1.5 mb-1">
+                <Users className="w-4 h-4 text-[#8b6e2d]" />
                 Persons of Interest Dossier
               </strong>
-              <p className="text-xs text-stone-300 mb-3">
+              <p className="text-xs text-stone-600 mb-3">
                 Inspect all 12 suspects, examine traits (hair, gender, age, attire), and develop custom AI noir portraits.
               </p>
               <button
@@ -3101,33 +3631,14 @@ export default function App() {
               </button>
             </div>
 
-            {/* PRECINCT EMERGENCY LOAN */}
-            <div className="bg-[#241d18] border border-amber-700/60 rounded-lg p-3.5 mb-3 text-center shadow-xs">
-              <strong className="text-amber-200 font-serif text-base flex items-center justify-center gap-1.5 mb-1">
-                <Coins className="w-4 h-4 text-amber-400" />
-                Precinct Discretionary Advance (Inspector Ford)
-              </strong>
-              <p className="text-xs text-stone-300 mb-2">
-                Out of funds? Borrow $100 from Inspector Ford to pay informants or staff. Reprimand penalty deducts 150 score points.
-              </p>
-              <button
-                className="btn btn-gold !my-0 !py-2 text-xs uppercase tracking-wider font-bold"
-                onClick={() => {
-                  setModalHQ(false);
-                  handleRequestFordLoan();
-                }}
-              >
-                💵 Borrow $100 from Inspector Ford (-150 Pts)
-              </button>
-            </div>
 
             {/* ARREST WARRANT */}
-            <div className="bg-[#261715] border border-red-700/80 rounded-lg p-3.5 mb-4 text-center shadow-xs">
-              <strong className="text-red-300 font-serif text-base flex items-center justify-center gap-1.5 mb-1">
-                <ShieldAlert className="w-4 h-4 text-red-400" />
+            <div className="bg-red-50 border border-red-300 rounded-lg p-3.5 mb-4 text-center shadow-xs">
+              <strong className="text-red-900 font-serif text-base flex items-center justify-center gap-1.5 mb-1">
+                <ShieldAlert className="w-4 h-4 text-red-600" />
                 Arrest Warrant
               </strong>
-              <p className="text-xs text-stone-300 mb-3">
+              <p className="text-xs text-stone-600 mb-3">
                 Ready to execute an arrest? Identify the killer in the room where you stand.
               </p>
               <button
@@ -3141,7 +3652,7 @@ export default function App() {
               </button>
             </div>
 
-            <button className="btn btn-secondary !my-0 !py-2 text-sm" onClick={() => setModalHQ(false)}>
+            <button className="btn btn-secondary !my-0 !py-2 text-sm text-stone-600" onClick={() => setModalHQ(false)}>
               Back to Investigation
             </button>
             <div className="flex gap-2 mt-3">
@@ -3608,41 +4119,41 @@ export default function App() {
       {/* 14. REVAMPED MANSION STAFF BRIBES MODAL */}
       {modalWorker && (
         <div className="modal-bg !flex !z-[9999]">
-          <div className="bg-[#1c1917] border-2 border-[#8b6e2d] p-5 rounded-xl shadow-2xl max-w-md w-full text-stone-200 relative overflow-hidden animate-in fade-in zoom-in-95">
+          <div className="bg-[#fcfaf7] border-2 border-[#8b6e2d] p-5 rounded-xl shadow-2xl max-w-md w-full text-stone-900 relative overflow-hidden animate-in fade-in zoom-in-95">
             <span
               onClick={() => setModalWorker(false)}
-              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-400 font-bold cursor-pointer"
+              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-700 font-bold cursor-pointer"
             >
               ✕
             </span>
 
             <div className="text-center border-b border-[#8b6e2d]/60 pb-3 mb-4">
-              <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-[#d4af37] block mb-1">
+              <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-[#8b6e2d] block mb-1">
                 Underground Mansion Channels
               </span>
-              <h2 className="font-serif text-2xl font-bold text-amber-100 uppercase">
+              <h2 className="font-serif text-2xl font-bold text-stone-900 uppercase">
                 Bribe Mansion Staff
               </h2>
-              <p className="text-xs text-stone-400 mt-1">
-                Your Funds: <strong className="text-emerald-400 font-bold">${tokens} 💰</strong>
+              <p className="text-xs text-stone-600 mt-1">
+                Your Funds: <strong className="text-emerald-700 font-bold">${tokens} 💰</strong>
               </p>
             </div>
 
             {/* BUTLER SECTION */}
-            <div className="bg-[#241e18] border border-[#8b6e2d]/50 rounded-lg p-3.5 mb-3 flex gap-3 items-center">
+            <div className="bg-[#faf6ee] border border-[#8b6e2d]/50 rounded-lg p-3.5 mb-3 flex gap-3 items-center">
               <NoirSpotStaff type="butler" size="sm" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
-                  <h4 className="font-serif font-bold text-amber-200 text-sm">James Higgins</h4>
-                  <span className="text-[10px] text-stone-400 uppercase font-mono">Senior Butler</span>
+                  <h4 className="font-serif font-bold text-stone-900 text-sm">James Higgins</h4>
+                  <span className="text-[10px] text-stone-500 uppercase font-mono">Senior Butler</span>
                 </div>
-                <p className="text-[11px] text-stone-300 mb-2 leading-tight">
+                <p className="text-[11px] text-stone-600 mb-2 leading-tight">
                   Knows every guest's movements and nocturnal wanderings.
                 </p>
                 <select
                   value={workerSuspect}
                   onChange={e => setWorkerSuspect(e.target.value)}
-                  className="bg-[#120f0d] text-stone-200 border border-[#8b6e2d] text-xs py-1 px-2 rounded w-full mb-2"
+                  className="bg-[#fdfbf7] text-stone-900 border border-[#8b6e2d] text-xs py-1 px-2 rounded w-full mb-2"
                 >
                   <option value="">-- Select Suspect to Track ($100) --</option>
                   {(gameDataRef.current.suspects.length > 0 ? gameDataRef.current.suspects : REAL_SUSPECTS).map((s, idx) => (
@@ -3683,20 +4194,20 @@ export default function App() {
             </div>
 
             {/* HOUSEMAID SECTION */}
-            <div className="bg-[#241e18] border border-[#8b6e2d]/50 rounded-lg p-3.5 mb-3 flex gap-3 items-center">
+            <div className="bg-[#faf6ee] border border-[#8b6e2d]/50 rounded-lg p-3.5 mb-3 flex gap-3 items-center">
               <NoirSpotStaff type="maid" size="sm" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
-                  <h4 className="font-serif font-bold text-amber-200 text-sm">Clara Evans</h4>
-                  <span className="text-[10px] text-stone-400 uppercase font-mono">Head Housemaid</span>
+                  <h4 className="font-serif font-bold text-stone-900 text-sm">Clara Evans</h4>
+                  <span className="text-[10px] text-stone-500 uppercase font-mono">Head Housemaid</span>
                 </div>
-                <p className="text-[11px] text-stone-300 mb-2 leading-tight">
+                <p className="text-[11px] text-stone-600 mb-2 leading-tight">
                   Tends every room and knows where tools were misplaced.
                 </p>
                 <select
                   value={workerItem}
                   onChange={e => setWorkerItem(e.target.value)}
-                  className="bg-[#120f0d] text-stone-200 border border-[#8b6e2d] text-xs py-1 px-2 rounded w-full mb-2"
+                  className="bg-[#fdfbf7] text-stone-900 border border-[#8b6e2d] text-xs py-1 px-2 rounded w-full mb-2"
                 >
                   <option value="Key">Key (Locked Chamber Entry)</option>
                   <option value="Ladder">Ladder (Secret Passage)</option>
@@ -3733,15 +4244,15 @@ export default function App() {
             </div>
 
             {/* PRECINCT EMERGENCY LOAN OPTION */}
-            <div className="bg-[#241715] border border-red-800/60 rounded-lg p-3 text-center mb-3">
-              <span className="text-[10px] uppercase font-bold tracking-widest text-red-300 block mb-1">
+            <div className="bg-[#fff9ea] border border-amber-600/60 rounded-lg p-3 text-center mb-3">
+              <span className="text-[10px] uppercase font-bold tracking-widest text-amber-900 block mb-1">
                 Precinct Discretionary Advance
               </span>
-              <p className="text-xs text-stone-300 mb-2">
+              <p className="text-xs text-stone-600 mb-2">
                 Out of funds? Borrow $100 from Inspector Ford. Deducts 150 points from your service merit score.
               </p>
               <button
-                className="w-full py-1.5 px-3 bg-red-950/80 hover:bg-red-900 border border-red-700/80 text-amber-200 font-serif font-bold text-xs rounded cursor-pointer transition shadow"
+                className="w-full py-1.5 px-3 bg-amber-100 hover:bg-amber-200 border border-amber-600 text-stone-900 font-serif font-bold text-xs rounded cursor-pointer transition shadow"
                 onClick={() => {
                   setModalWorker(false);
                   handleRequestFordLoan();
@@ -3752,7 +4263,7 @@ export default function App() {
             </div>
 
             <button
-              className="btn btn-secondary !my-0 !py-2 text-stone-400 text-xs w-full"
+              className="btn btn-secondary !my-0 !py-2 text-stone-600 text-xs w-full"
               onClick={() => setModalWorker(false)}
             >
               Return to Exploration
@@ -3764,51 +4275,51 @@ export default function App() {
       {/* --- STAFF BRIBE DIALOGUE BOX MODAL --- */}
       {modalStaffDialogue && modalStaffDialogue.open && (
         <div className="modal-bg !flex !z-[99999] transition-opacity duration-300">
-          <div className="bg-[#181411] border-2 border-[#8b6e2d] p-5 rounded-xl shadow-2xl max-w-md w-full text-stone-200 relative overflow-hidden animate-in fade-in zoom-in-95">
+          <div className="bg-[#fcfaf7] border-2 border-[#8b6e2d] p-5 rounded-xl shadow-2xl max-w-md w-full text-stone-900 relative overflow-hidden animate-in fade-in zoom-in-95">
             <span
               onClick={() => setModalStaffDialogue(null)}
-              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-400 font-bold cursor-pointer z-10"
+              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-700 font-bold cursor-pointer z-10"
             >
               ✕
             </span>
 
             {/* Header Stamp */}
             <div className="text-center border-b border-[#8b6e2d]/60 pb-3 mb-4">
-              <span className="inline-block bg-amber-950/80 text-amber-300 border border-amber-700 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-1">
+              <span className="inline-block bg-[#f5eedf] text-[#8b6e2d] border border-[#8b6e2d]/60 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-1">
                 CONFIDENTIAL STAFF TESTIMONY
               </span>
-              <h2 className="font-serif text-2xl font-bold text-amber-100 uppercase">
+              <h2 className="font-serif text-2xl font-bold text-stone-900 uppercase">
                 {modalStaffDialogue.staffName}
               </h2>
-              <span className="text-xs text-stone-400 font-serif italic">
+              <span className="text-xs text-stone-600 font-serif italic">
                 {modalStaffDialogue.staffRole}
               </span>
             </div>
 
             {/* Staff Spot Portrait & Narration */}
-            <div className="flex gap-4 items-center bg-[#241e18] border border-[#8b6e2d]/50 p-3 rounded-lg mb-3">
+            <div className="flex gap-4 items-center bg-[#faf6ee] border border-[#8b6e2d]/50 p-3 rounded-lg mb-3">
               <NoirSpotStaff type={modalStaffDialogue.staffType} size="md" />
               <div className="flex-1 text-left">
-                <span className="text-[10px] uppercase font-mono font-bold text-[#d4af37] block mb-1">
+                <span className="text-[10px] uppercase font-mono font-bold text-[#8b6e2d] block mb-1">
                   Witness Demeanor
                 </span>
-                <p className="text-xs italic text-stone-300 leading-relaxed font-serif">
+                <p className="text-xs italic text-stone-700 leading-relaxed font-serif">
                   {modalStaffDialogue.dialogue}
                 </p>
               </div>
             </div>
 
             {/* Testimony Quote Box */}
-            <div className="bg-amber-50/90 border border-amber-300 rounded-lg p-4 relative shadow-inner mb-4 text-left">
-              <span className="text-3xl text-amber-700/40 font-serif absolute -top-2 left-2 select-none">“</span>
-              <p className="font-serif italic text-base leading-relaxed text-stone-900 pt-1 pl-4">
+            <div className="bg-[#fff9ea] border border-[#8b6e2d] rounded-lg p-4 relative shadow-xs mb-4 text-left">
+              <span className="text-3xl text-[#8b6e2d]/40 font-serif absolute -top-2 left-2 select-none">“</span>
+              <p className="font-serif italic text-base leading-relaxed text-stone-950 pt-1 pl-4">
                 {modalStaffDialogue.clue}
               </p>
-              <span className="text-3xl text-amber-700/40 font-serif absolute -bottom-4 right-3 select-none">”</span>
+              <span className="text-3xl text-[#8b6e2d]/40 font-serif absolute -bottom-4 right-3 select-none">”</span>
             </div>
 
             {/* Lead Summary Badge */}
-            <div className="bg-[#120f0d] border border-amber-800/80 rounded p-2.5 text-xs font-mono text-amber-200 mb-4 text-center">
+            <div className="bg-[#f5eedf] border border-[#8b6e2d]/60 rounded p-2.5 text-xs font-mono text-[#8b6e2d] mb-4 text-center">
               🔍 WITNESS LEAD LOGGED TO CASE DOSSIER
             </div>
 
@@ -3816,13 +4327,11 @@ export default function App() {
             <button
               className="btn btn-gold !my-0 !py-2.5 text-sm uppercase tracking-wider font-bold w-full cursor-pointer shadow"
               onClick={() => {
-                const note = `Staff Testimony (${modalStaffDialogue.staffName}): "${modalStaffDialogue.clue}"`;
-                saveLog(note);
                 setModalStaffDialogue(null);
-                showAlert('Testimony transcribed into your Detective Notebook.');
+                setActivePhase('LOG');
               }}
             >
-              Transcribe to Notebook & Close
+              Log Testimony in Notebook ➔
             </button>
           </div>
         </div>
@@ -3831,41 +4340,41 @@ export default function App() {
       {/* --- INSPECTOR FORD LOAN DIALOGUE MODAL --- */}
       {modalFordLoan && modalFordLoan.open && (
         <div className="modal-bg !flex !z-[99999] transition-opacity duration-300">
-          <div className="bg-[#181411] border-2 border-red-700/80 p-5 rounded-xl shadow-2xl max-w-md w-full text-stone-200 relative overflow-hidden animate-in fade-in zoom-in-95">
+          <div className="bg-[#fcfaf7] border-2 border-red-700/80 p-5 rounded-xl shadow-2xl max-w-md w-full text-stone-900 relative overflow-hidden animate-in fade-in zoom-in-95">
             {/* Header Stamp */}
-            <div className="text-center border-b border-red-800/80 pb-3 mb-4">
-              <span className="inline-block bg-red-950 text-red-300 border border-red-700 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-1">
+            <div className="text-center border-b border-red-200 pb-3 mb-4">
+              <span className="inline-block bg-red-100 text-red-900 border border-red-300 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-1">
                 SCOTLAND YARD • PRECINCT ADVANCE
               </span>
-              <h2 className="font-serif text-2xl font-bold text-red-200 uppercase">
+              <h2 className="font-serif text-2xl font-bold text-red-900 uppercase">
                 Inspector Ford's Reprimand
               </h2>
             </div>
 
             {/* Inspector Ford Portrait & Narration */}
-            <div className="flex gap-4 items-center bg-[#241c19] border border-red-700/50 p-3 rounded-lg mb-3">
+            <div className="flex gap-4 items-center bg-[#faf6ee] border border-red-300 p-3 rounded-lg mb-3">
               <NoirSpotStaff type="inspector" size="md" />
               <div className="flex-1 text-left">
-                <span className="text-[10px] uppercase font-mono font-bold text-red-400 block mb-1">
+                <span className="text-[10px] uppercase font-mono font-bold text-red-700 block mb-1">
                   Precinct Commander
                 </span>
-                <p className="text-xs italic text-stone-300 leading-relaxed font-serif">
+                <p className="text-xs italic text-stone-700 leading-relaxed font-serif">
                   Ford slams the ledger shut, tosses a roll of twenty-dollar bills onto the desk, and glares beneath his hat brim...
                 </p>
               </div>
             </div>
 
             {/* Dialogue Box */}
-            <div className="bg-[#2a1d1a] border-l-4 border-red-600 border border-red-900/60 p-4 rounded-lg mb-4 text-left shadow-inner">
-              <p className="font-serif italic text-base leading-relaxed text-stone-100">
+            <div className="bg-[#fff9ea] border-l-4 border-red-600 border border-red-200 p-4 rounded-lg mb-4 text-left shadow-xs">
+              <p className="font-serif italic text-base leading-relaxed text-stone-900">
                 "Confound it, Detective! You're burning through the commissioner's payroll like cheap cigars! Here is $100 from my emergency discretionary drawer. I've docked 150 points from your official merit score. If you come back without cuffs on Dr. Black's killer, I'll personally transfer you to traffic duty in the freezing rain!"
               </p>
             </div>
 
             {/* Transaction Card */}
-            <div className="bg-[#120f0d] border border-amber-800/80 rounded p-3 mb-4 flex justify-between items-center text-xs font-mono">
-              <span className="text-emerald-400 font-bold">+$100 CASH GRANTED</span>
-              <span className="text-red-400 font-bold">-150 MERIT SCORE PENALTY</span>
+            <div className="bg-[#f5eedf] border border-[#8b6e2d]/60 rounded p-3 mb-4 flex justify-between items-center text-xs font-mono">
+              <span className="text-emerald-800 font-bold">+$100 CASH GRANTED</span>
+              <span className="text-red-700 font-bold">-150 MERIT SCORE PENALTY</span>
             </div>
 
             {/* Close Button */}
@@ -3882,38 +4391,38 @@ export default function App() {
       {/* --- BI-ROUND DEPARTMENT REPORT MODAL (EVERY 2 ROUNDS) --- */}
       {modalBiRoundReport && modalBiRoundReport.open && (
         <div className="modal-bg !flex !z-[99999] transition-opacity duration-300">
-          <div className="bg-[#181411] border-2 border-[#8b6e2d] p-5 rounded-xl shadow-2xl max-w-lg w-full text-stone-200 relative overflow-hidden animate-in fade-in zoom-in-95 max-h-[90vh] flex flex-col">
+          <div className="bg-[#fcfaf7] border-2 border-[#8b6e2d] p-5 rounded-xl shadow-2xl max-w-lg w-full text-stone-900 relative overflow-hidden animate-in fade-in zoom-in-95 max-h-[90vh] flex flex-col">
             {modalBiRoundReport.step === 'form' ? (
               <div className="overflow-y-auto pr-1">
                 {/* Header */}
                 <div className="text-center border-b border-[#8b6e2d]/60 pb-3 mb-4">
-                  <span className="inline-block bg-amber-950/80 text-amber-300 border border-amber-700 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-1">
+                  <span className="inline-block bg-[#f5eedf] text-[#8b6e2d] border border-[#8b6e2d]/60 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-1">
                     SCOTLAND YARD • MANDATORY BI-ROUND INQUEST
                   </span>
-                  <h2 className="font-serif text-2xl font-bold text-amber-100 uppercase">
+                  <h2 className="font-serif text-2xl font-bold text-stone-900 uppercase">
                     Forensics Field Reports
                   </h2>
-                  <p className="text-xs text-stone-400 mt-1">
+                  <p className="text-xs text-stone-600 mt-1">
                     Round {modalBiRoundReport.completedRound} Concluded • Submit Up to 3 Preliminary Claims
                   </p>
                 </div>
 
-                <p className="text-xs text-stone-300 mb-4 bg-[#241e18] p-3 rounded border border-[#8b6e2d]/50 leading-relaxed">
+                <p className="text-xs text-stone-700 mb-4 bg-[#faf6ee] p-3 rounded border border-[#8b6e2d]/50 leading-relaxed text-left">
                   Department regulations require all active detectives to file field deductions every 2 rounds. You and Detective Alfred may each submit <strong>up to 3 investigative claims</strong> regarding suspect locations or weapon stashes. Confirmed claims earn <strong>+120 Pts & $50 Bounty</strong> each.
                 </p>
 
                 {/* 3 REPORT SLOTS */}
                 <div className="space-y-3 mb-5">
                   {/* Slot 1 */}
-                  <div className="bg-[#201a15] border border-amber-900/60 p-3 rounded-lg">
-                    <span className="text-[11px] font-mono uppercase font-bold text-[#d4af37] block mb-1.5">
+                  <div className="bg-[#faf6ee] border border-[#8b6e2d]/60 p-3 rounded-lg text-left">
+                    <span className="text-[11px] font-mono uppercase font-bold text-[#8b6e2d] block mb-1.5">
                       Report Claim #1
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <select
                         value={modalBiRoundReport.report1Room}
                         onChange={e => setModalBiRoundReport(prev => ({ ...prev, report1Room: e.target.value }))}
-                        className="bg-[#120f0d] text-stone-200 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
+                        className="bg-[#fdfbf7] text-stone-900 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
                       >
                         <option value="">-- Select Target Room --</option>
                         {gameDataRef.current.locations.map((l, idx) => (
@@ -3923,7 +4432,7 @@ export default function App() {
                       <select
                         value={modalBiRoundReport.report1Entity}
                         onChange={e => setModalBiRoundReport(prev => ({ ...prev, report1Entity: e.target.value }))}
-                        className="bg-[#120f0d] text-stone-200 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
+                        className="bg-[#fdfbf7] text-stone-900 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
                       >
                         <option value="">-- Suspect or Weapon --</option>
                         <option value="K">The Prime Killer</option>
@@ -3940,15 +4449,15 @@ export default function App() {
                   </div>
 
                   {/* Slot 2 */}
-                  <div className="bg-[#201a15] border border-amber-900/60 p-3 rounded-lg">
-                    <span className="text-[11px] font-mono uppercase font-bold text-[#d4af37] block mb-1.5">
+                  <div className="bg-[#faf6ee] border border-[#8b6e2d]/60 p-3 rounded-lg text-left">
+                    <span className="text-[11px] font-mono uppercase font-bold text-[#8b6e2d] block mb-1.5">
                       Report Claim #2 (Optional)
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <select
                         value={modalBiRoundReport.report2Room}
                         onChange={e => setModalBiRoundReport(prev => ({ ...prev, report2Room: e.target.value }))}
-                        className="bg-[#120f0d] text-stone-200 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
+                        className="bg-[#fdfbf7] text-stone-900 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
                       >
                         <option value="">-- Select Target Room --</option>
                         {gameDataRef.current.locations.map((l, idx) => (
@@ -3958,7 +4467,7 @@ export default function App() {
                       <select
                         value={modalBiRoundReport.report2Entity}
                         onChange={e => setModalBiRoundReport(prev => ({ ...prev, report2Entity: e.target.value }))}
-                        className="bg-[#120f0d] text-stone-200 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
+                        className="bg-[#fdfbf7] text-stone-900 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
                       >
                         <option value="">-- Suspect or Weapon --</option>
                         <option value="K">The Prime Killer</option>
@@ -3975,15 +4484,15 @@ export default function App() {
                   </div>
 
                   {/* Slot 3 */}
-                  <div className="bg-[#201a15] border border-amber-900/60 p-3 rounded-lg">
-                    <span className="text-[11px] font-mono uppercase font-bold text-[#d4af37] block mb-1.5">
+                  <div className="bg-[#faf6ee] border border-[#8b6e2d]/60 p-3 rounded-lg text-left">
+                    <span className="text-[11px] font-mono uppercase font-bold text-[#8b6e2d] block mb-1.5">
                       Report Claim #3 (Optional)
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <select
                         value={modalBiRoundReport.report3Room}
                         onChange={e => setModalBiRoundReport(prev => ({ ...prev, report3Room: e.target.value }))}
-                        className="bg-[#120f0d] text-stone-200 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
+                        className="bg-[#fdfbf7] text-stone-900 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
                       >
                         <option value="">-- Select Target Room --</option>
                         {gameDataRef.current.locations.map((l, idx) => (
@@ -3993,7 +4502,7 @@ export default function App() {
                       <select
                         value={modalBiRoundReport.report3Entity}
                         onChange={e => setModalBiRoundReport(prev => ({ ...prev, report3Entity: e.target.value }))}
-                        className="bg-[#120f0d] text-stone-200 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
+                        className="bg-[#fdfbf7] text-stone-900 border border-[#8b6e2d] text-xs py-1.5 px-2 rounded"
                       >
                         <option value="">-- Suspect or Weapon --</option>
                         <option value="K">The Prime Killer</option>
@@ -4012,13 +4521,13 @@ export default function App() {
 
                 <div className="flex flex-col gap-2">
                   <button
-                    className="btn btn-gold !my-0 !py-3 text-sm font-bold uppercase tracking-wider w-full shadow"
+                    className="btn btn-gold !my-0 !py-3 text-sm font-bold uppercase tracking-wider w-full shadow cursor-pointer"
                     onClick={handleSubmitBiRoundReports}
                   >
                     Submit Field Reports to Forensics
                   </button>
                   <button
-                    className="btn btn-secondary !my-0 !py-2 text-stone-400 text-xs w-full"
+                    className="btn btn-secondary !my-0 !py-2 text-stone-600 text-xs w-full"
                     onClick={handleSubmitBiRoundReports}
                   >
                     Skip Submissions (Proceed to Results)
@@ -4029,17 +4538,17 @@ export default function App() {
               /* Step 2: Results Screen */
               <div className="overflow-y-auto pr-1">
                 <div className="text-center border-b border-[#8b6e2d]/60 pb-3 mb-4">
-                  <span className="inline-block bg-emerald-950 text-emerald-300 border border-emerald-700 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-1">
+                  <span className="inline-block bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-1">
                     BALLISTICS & FORENSICS DISPATCH
                   </span>
-                  <h2 className="font-serif text-2xl font-bold text-amber-100 uppercase">
+                  <h2 className="font-serif text-2xl font-bold text-stone-900 uppercase">
                     Round {modalBiRoundReport.completedRound} Inquest Findings
                   </h2>
                 </div>
 
                 {/* Player's Report Results */}
-                <div className="bg-[#241e18] border border-[#8b6e2d]/60 rounded-lg p-3.5 mb-4 text-left">
-                  <span className="text-[10px] font-mono uppercase font-bold text-[#d4af37] block mb-2">
+                <div className="bg-[#faf6ee] border border-[#8b6e2d]/60 rounded-lg p-3.5 mb-4 text-left">
+                  <span className="text-[10px] font-mono uppercase font-bold text-[#8b6e2d] block mb-2">
                     Your Department Claims:
                   </span>
                   {modalBiRoundReport.playerResults && modalBiRoundReport.playerResults.length > 0 ? (
@@ -4049,8 +4558,8 @@ export default function App() {
                           key={idx}
                           className={`p-2.5 rounded text-xs leading-relaxed border ${
                             res.success
-                              ? 'bg-emerald-950/60 border-emerald-700/80 text-emerald-200'
-                              : 'bg-red-950/60 border-red-700/80 text-red-200'
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                              : 'bg-red-50 border-red-300 text-red-950'
                           }`}
                         >
                           {res.desc}
@@ -4058,35 +4567,35 @@ export default function App() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-stone-400 italic">
+                    <p className="text-xs text-stone-500 italic">
                       No claims were submitted by your team this bi-round cycle.
                     </p>
                   )}
                 </div>
 
                 {/* Detective Alfred's Report Results (CRITICAL: COUNT ONLY, NOT WHICH ALL) */}
-                <div className="bg-[#1e1715] border border-red-800/60 rounded-lg p-3.5 mb-5 text-left">
+                <div className="bg-[#fff5f5] border border-red-300 rounded-lg p-3.5 mb-5 text-left">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-mono uppercase font-bold text-red-300">
+                    <span className="text-[10px] font-mono uppercase font-bold text-red-900">
                       Detective Alfred's Submission
                     </span>
-                    <span className="text-[10px] bg-red-950 text-red-200 px-2 py-0.5 rounded border border-red-800/60">
+                    <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded border border-red-300 font-bold">
                       Rival Sleuth
                     </span>
                   </div>
-                  <p className="text-sm font-serif text-stone-200 mb-2">
+                  <p className="text-sm font-serif text-stone-800 mb-2">
                     Detective Alfred submitted <strong>{modalBiRoundReport.aiSubmittedCount || 0}</strong> confidential investigative reports to Department Forensics.
                   </p>
-                  <div className="bg-[#120d0b] border border-red-700/60 p-3 rounded mb-2 flex items-center gap-3">
+                  <div className="bg-[#fef2f2] border border-red-200 p-3 rounded mb-2 flex items-center gap-3">
                     <span className="text-2xl">📋</span>
                     <div>
-                      <span className="text-xs text-stone-400 block uppercase font-mono">Forensic Verification:</span>
-                      <strong className="text-amber-300 font-serif text-base">
+                      <span className="text-xs text-stone-500 block uppercase font-mono">Forensic Verification:</span>
+                      <strong className="text-red-900 font-serif text-base">
                         {modalBiRoundReport.aiSuccessCount || 0} of {modalBiRoundReport.aiSubmittedCount || 0} reports were verified accurate.
                       </strong>
                     </div>
                   </div>
-                  <p className="text-[11px] text-stone-400 italic border-t border-stone-800 pt-2">
+                  <p className="text-[11px] text-stone-500 italic border-t border-stone-200 pt-2">
                     🔒 <strong>Confidentiality Seal:</strong> Under Scotland Yard Section 4-B regulations, competing investigators' specific target rooms and named suspects are strictly withheld.
                   </p>
                 </div>
@@ -4106,11 +4615,11 @@ export default function App() {
       {/* 15. MULTI-PAGE BOARD SETUP MODAL WITH GRAPHICAL LOCKED ROOM */}
       {modalSetupBoard.open && (
         <div className="modal-bg !flex !z-[9999] transition-opacity duration-300">
-          <div className="notebook-content relative !h-auto max-h-[88vh] text-left flex flex-col overflow-y-auto text-stone-200">
+          <div className="notebook-content relative !h-auto max-h-[88vh] text-left flex flex-col overflow-y-auto text-stone-900 !bg-[#fdfaf5] border-2 border-[#8b6e2d] shadow-2xl p-5 sm:p-6">
             {/* Close Cross */}
             <span
               onClick={() => setModalSetupBoard({ open: false, seed: '', lockedRoom: '', itemRooms: [], step: 1 })}
-              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-400 font-bold cursor-pointer z-10"
+              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-700 font-bold cursor-pointer z-10"
             >
               ✕
             </span>
@@ -4120,56 +4629,56 @@ export default function App() {
               <div className="animate-in fade-in zoom-in-95 duration-200">
                 <div className="text-center border-b-2 border-[#8b6e2d] pb-2 mb-3">
                   <div className="flex items-center justify-between mb-1 pr-6">
-                    <span className="text-[10px] font-bold tracking-widest text-[#d4af37] uppercase">
+                    <span className="text-[10px] font-bold tracking-widest text-[#8b6e2d] uppercase">
                       Physical Board Setup • Page 1 of 2
                     </span>
-                    <span className="text-[10px] font-mono font-bold bg-amber-950/80 text-amber-200 px-2 py-0.5 rounded border border-amber-800/60">
+                    <span className="text-[10px] font-mono font-bold bg-[#f5eedf] text-[#8b6e2d] px-2 py-0.5 rounded border border-[#8b6e2d]/60">
                       CASE #{modalSetupBoard.seed || activeSeed}
                     </span>
                   </div>
-                  <h2 className="font-serif text-2xl font-bold text-amber-100 uppercase">
+                  <h2 className="font-serif text-2xl font-bold text-stone-900 uppercase">
                     Lock Down The Chamber
                   </h2>
                 </div>
 
                 {/* Inspector Ford Directive Box */}
-                <div className="bg-[#241c19] border-l-4 border-[#d4af37] border border-[#8b6e2d]/60 p-3 rounded-lg mb-3 text-left shadow-xs">
+                <div className="bg-[#faf6ee] border-l-4 border-[#8b6e2d] border border-[#8b6e2d]/60 p-3 rounded-lg mb-3 text-left shadow-xs">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-base">🕵️‍♂️</span>
-                    <span className="text-xs font-bold text-[#d4af37] uppercase tracking-wider font-serif">
+                    <span className="text-xs font-bold text-[#8b6e2d] uppercase tracking-wider font-serif">
                       Inspector Ford • Chief's Directive
                     </span>
                   </div>
-                  <p className="font-serif italic text-xs sm:text-sm text-stone-200 leading-relaxed">
+                  <p className="font-serif italic text-xs sm:text-sm text-stone-700 leading-relaxed">
                     "Detective, seal that chamber door immediately! Forensics needs the crime scene untouched before these conniving aristocrats tamper with the evidence. Place the heavy padlock token on your board. Nobody steps inside without the brass key."
                   </p>
                 </div>
 
                 {/* Graphical Representation Card of the Locked Room */}
-                <div className="relative rounded-lg overflow-hidden border-2 border-[#8b6e2d] shadow-lg mb-3 bg-[#1e1915]">
+                <div className="relative rounded-lg overflow-hidden border-2 border-[#8b6e2d] shadow-md mb-3 bg-[#f5eedf]">
                   {/* Handcrafted Noir Spot Illustration of the Locked Door */}
                   <NoirSpotLockedChamber roomName={modalSetupBoard.lockedRoom} />
 
                   {/* Prominent Golden Lock Symbol Badge */}
-                  <div className="absolute top-3 right-3 bg-stone-950/85 backdrop-blur-xs border-2 border-amber-400 p-2.5 rounded-full shadow-2xl flex items-center justify-center">
-                    <Lock className="w-7 h-7 text-amber-300 animate-pulse drop-shadow-[0_0_8px_rgba(212,175,55,0.9)]" />
+                  <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-xs border-2 border-amber-500 p-2.5 rounded-full shadow-lg flex items-center justify-center">
+                    <Lock className="w-6 h-6 text-amber-700 animate-pulse" />
                   </div>
 
                   {/* Locked Room Identification Banner */}
-                  <div className="p-3.5 bg-[#251f19] text-stone-100 border-t-2 border-[#8b6e2d]">
+                  <div className="p-3.5 bg-[#faf6ee] text-stone-900 border-t-2 border-[#8b6e2d]">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-[10px] font-bold tracking-widest text-[#d4af37] uppercase flex items-center gap-1.5">
-                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-[10px] font-bold tracking-widest text-[#8b6e2d] uppercase flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-amber-700" />
                         <span>Chamber Sealed & Barred</span>
                       </span>
-                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-stone-900 text-amber-200 border border-stone-700">
+                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-[#f5eedf] text-[#8b6e2d] border border-[#8b6e2d]/60">
                         {gameDataRef.current.roomConnections[modalSetupBoard.lockedRoom]?.floor === 'SECOND'
                           ? '1st Floor Wing'
                           : 'Ground Floor Wing'}
                       </span>
                     </div>
 
-                    <h3 className="font-serif text-2xl sm:text-3xl font-extrabold text-amber-100 tracking-wide uppercase">
+                    <h3 className="font-serif text-2xl sm:text-3xl font-extrabold text-[#8b0000] tracking-wide uppercase">
                       {modalSetupBoard.lockedRoom || 'CELLAR'}
                     </h3>
 
@@ -4179,8 +4688,8 @@ export default function App() {
                         l => l.id === modalSetupBoard.lockedRoom
                       );
                       return roomData ? (
-                        <p className="text-xs text-stone-300 mt-1 font-sans">
-                          Room Traits: <span className="text-amber-200">{roomData.traits.join(', ')}</span>
+                        <p className="text-xs text-stone-600 mt-1 font-sans">
+                          Room Traits: <span className="text-stone-900 font-bold">{roomData.traits.join(', ')}</span>
                         </p>
                       ) : null;
                     })()}
@@ -4188,8 +4697,8 @@ export default function App() {
                 </div>
 
                 {/* Instructions Box */}
-                <div className="bg-[#241c19] border border-amber-600/60 rounded-lg p-3 text-stone-200 text-xs leading-relaxed mb-4">
-                  <strong className="text-red-400 font-bold uppercase block mb-1">
+                <div className="bg-[#fff9ea] border border-amber-600/60 rounded-lg p-3 text-stone-900 text-xs leading-relaxed mb-4 text-left">
+                  <strong className="text-red-700 font-bold uppercase block mb-1">
                     🔒 Physical Board Instruction:
                   </strong>
                   Place the physical <strong>Padlock / Locked Door marker</strong> directly on the{' '}
@@ -4211,30 +4720,30 @@ export default function App() {
               <div className="animate-in fade-in zoom-in-95 duration-200">
                 <div className="text-center border-b-2 border-[#8b6e2d] pb-2 mb-3">
                   <div className="flex items-center justify-between mb-1 pr-6">
-                    <span className="text-[10px] font-bold tracking-widest text-[#d4af37] uppercase">
+                    <span className="text-[10px] font-bold tracking-widest text-[#8b6e2d] uppercase">
                       Physical Board Setup • Page 2 of 2
                     </span>
-                    <span className="text-[10px] font-mono font-bold bg-amber-950/80 text-amber-200 px-2 py-0.5 rounded border border-amber-800/60">
+                    <span className="text-[10px] font-mono font-bold bg-[#f5eedf] text-[#8b6e2d] px-2 py-0.5 rounded border border-[#8b6e2d]/60">
                       CASE #{modalSetupBoard.seed || activeSeed}
                     </span>
                   </div>
-                  <h2 className="font-serif text-2xl font-bold text-amber-100 uppercase">
+                  <h2 className="font-serif text-2xl font-bold text-stone-900 uppercase">
                     Mansion Item Placement
                   </h2>
-                  <p className="text-xs text-stone-400 mt-1">
+                  <p className="text-xs text-stone-600 mt-1">
                     Place 1 Item token face-down in each of the following 8 rooms on your board:
                   </p>
                 </div>
 
                 {/* Inspector Ford Evidence Directive */}
-                <div className="bg-[#241c19] border-l-4 border-[#d4af37] border border-[#8b6e2d]/60 p-3 rounded-lg mb-3 text-left shadow-xs">
+                <div className="bg-[#faf6ee] border-l-4 border-[#8b6e2d] border border-[#8b6e2d]/60 p-3 rounded-lg mb-3 text-left shadow-xs">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-base">🕵️‍♂️</span>
-                    <span className="text-xs font-bold text-[#d4af37] uppercase tracking-wider font-serif">
+                    <span className="text-xs font-bold text-[#8b6e2d] uppercase tracking-wider font-serif">
                       Inspector Ford • Evidence Distribution
                     </span>
                   </div>
-                  <p className="font-serif italic text-xs sm:text-sm text-stone-200 leading-relaxed">
+                  <p className="font-serif italic text-xs sm:text-sm text-stone-700 leading-relaxed">
                     "Distribute the eight evidence and utility tokens face-down into each designated room below. Once the mansion is staged, open your case file and review the autopsy report."
                   </p>
                 </div>
@@ -4244,27 +4753,27 @@ export default function App() {
                   {modalSetupBoard.itemRooms.map((roomName, idx) => (
                     <div
                       key={idx}
-                      className="bg-[#241f19] border border-[#8b6e2d]/60 rounded-lg p-2.5 flex items-center gap-2 shadow-xs"
+                      className="bg-[#faf6ee] border border-[#8b6e2d]/60 rounded-lg p-2.5 flex items-center gap-2 shadow-xs"
                     >
-                      <span className="w-5 h-5 rounded-full bg-amber-950 border border-amber-700 flex items-center justify-center text-[10px] font-bold text-amber-300 flex-shrink-0">
+                      <span className="w-5 h-5 rounded-full bg-[#faecd0] border border-[#8b6e2d] flex items-center justify-center text-[10px] font-bold text-[#8b0000] flex-shrink-0">
                         {idx + 1}
                       </span>
-                      <span className="font-serif font-bold text-xs sm:text-sm text-stone-200 truncate">
+                      <span className="font-serif font-bold text-xs sm:text-sm text-stone-900 truncate">
                         {roomName}
                       </span>
                     </div>
                   ))}
                 </div>
 
-                <div className="bg-[#1f1915] border border-stone-700 rounded-lg p-2.5 text-stone-300 text-xs mb-4">
-                  <span className="font-bold text-[#d4af37] block mb-0.5">📌 Investigator Tip:</span>
+                <div className="bg-[#fff9ea] border border-amber-600/60 rounded-lg p-2.5 text-stone-700 text-xs mb-4 text-left">
+                  <span className="font-bold text-amber-900 block mb-0.5">📌 Investigator Tip:</span>
                   Items include the Key, Torchlight, Ladder, and special investigative tools. Keep them face-down until searched.
                 </div>
 
                 {/* Bottom Navigation Buttons */}
                 <div className="flex flex-col sm:flex-row gap-2 mt-2">
                   <button
-                    className="btn btn-secondary !my-0 !py-2.5 text-sm flex-1 cursor-pointer"
+                    className="btn btn-secondary !my-0 !py-2.5 text-sm flex-1 cursor-pointer text-stone-600"
                     onClick={() => setModalSetupBoard(prev => ({ ...prev, step: 1 }))}
                   >
                     ⬅ Back to Locked Room
@@ -4291,47 +4800,47 @@ export default function App() {
       {/* --- INSPECTOR FORD DISAPPOINTED FORFEIT SOLUTION DIALOGUE --- */}
       {modalForfeitSolution && modalForfeitSolution.open && (
         <div className="modal-bg !flex !z-[99999] transition-opacity duration-300">
-          <div className="bg-[#181411] border-2 border-red-700 p-5 rounded-xl shadow-2xl max-w-md w-full text-stone-200 relative overflow-hidden animate-in fade-in zoom-in-95">
+          <div className="bg-[#fcfaf7] border-2 border-red-700 p-5 rounded-xl shadow-2xl max-w-md w-full text-stone-900 relative overflow-hidden animate-in fade-in zoom-in-95">
             {/* Stamp */}
-            <div className="text-center border-b border-red-800/80 pb-3 mb-4">
-              <span className="inline-block bg-red-950 text-red-300 border border-red-700 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-2">
+            <div className="text-center border-b border-red-200 pb-3 mb-4">
+              <span className="inline-block bg-red-100 text-red-900 border border-red-300 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded mb-2">
                 CASE FORFEITED • POLICE COMMISSION REPRIMAND
               </span>
-              <h2 className="font-serif text-2xl font-black text-red-200 uppercase tracking-wide">
+              <h2 className="font-serif text-2xl font-black text-red-900 uppercase tracking-wide">
                 Investigation Terminated
               </h2>
             </div>
 
             {/* Inspector Ford Dialogue Box */}
-            <div className="bg-[#241c19] border-l-4 border-red-600 border border-[#482320] p-4 rounded-lg mb-4 text-left shadow-inner">
+            <div className="bg-[#fff9ea] border-l-4 border-red-600 border border-red-200 p-4 rounded-lg mb-4 text-left shadow-xs">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xl">🕵️‍♂️</span>
-                <strong className="text-red-400 font-serif text-base tracking-wide uppercase">
+                <strong className="text-red-900 font-serif text-base tracking-wide uppercase">
                   Inspector Ford
                 </strong>
               </div>
-              <p className="font-serif italic text-base leading-relaxed text-stone-200">
+              <p className="font-serif italic text-base leading-relaxed text-stone-900">
                 "Confound it, Detective! You had every lead at your fingertips, and you chose to throw down your badge?! Dr. Black's blood still cries out from the floorboards, and Scotland Yard will remember who walked away when the pressure mounted. Hand over your revolver and badge—your career with this department is finished."
               </p>
             </div>
 
             {/* The Confidential Solution Revealed */}
-            <div className="bg-[#120f0d] border border-[#8b6e2d]/60 rounded-lg p-4 text-left mb-5">
-              <span className="text-[10px] font-mono text-[#d4af37] uppercase tracking-widest block mb-2 font-bold">
+            <div className="bg-[#faf6ee] border border-[#8b6e2d]/60 rounded-lg p-4 text-left mb-5">
+              <span className="text-[10px] font-mono text-[#8b6e2d] uppercase tracking-widest block mb-2 font-bold">
                 CONFIDENTIAL INQUEST DISCLOSURE
               </span>
               <div className="space-y-2 text-sm font-serif">
-                <div className="flex justify-between border-b border-stone-800 pb-1.5">
-                  <span className="text-stone-400">The True Killer:</span>
-                  <span className="font-bold text-red-300 text-base">{modalForfeitSolution.killerName}</span>
+                <div className="flex justify-between border-b border-stone-200 pb-1.5">
+                  <span className="text-stone-600">The True Killer:</span>
+                  <span className="font-bold text-red-800 text-base">{modalForfeitSolution.killerName}</span>
                 </div>
-                <div className="flex justify-between border-b border-stone-800 pb-1.5">
-                  <span className="text-stone-400">Hiding Chamber:</span>
-                  <span className="font-bold text-amber-200 text-base">{modalForfeitSolution.killerRoom}</span>
+                <div className="flex justify-between border-b border-stone-200 pb-1.5">
+                  <span className="text-stone-600">Hiding Chamber:</span>
+                  <span className="font-bold text-stone-900 text-base">{modalForfeitSolution.killerRoom}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-stone-400">Murder Weapon:</span>
-                  <span className="font-bold text-amber-200 text-base">{modalForfeitSolution.weaponName}</span>
+                  <span className="text-stone-600">Murder Weapon:</span>
+                  <span className="font-bold text-stone-900 text-base">{modalForfeitSolution.weaponName}</span>
                 </div>
               </div>
             </div>
@@ -4354,22 +4863,248 @@ export default function App() {
       {/* 16. DETECTIVE'S CASE BRIEFING MODAL */}
       {modalCaseBriefing.open && (
         <div className="modal-bg !flex !z-[9999]">
-          <div className="notebook-content relative !h-auto max-h-[88vh] text-left flex flex-col text-stone-200">
+          <div className="notebook-content relative !h-auto max-h-[88vh] text-left flex flex-col text-stone-900 !bg-[#fdfaf5] border-2 border-[#8b6e2d] shadow-2xl p-5 sm:p-6">
             <span
-              onClick={() => setModalCaseBriefing({ open: false, content: '' })}
-              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-400 font-bold cursor-pointer"
+              onClick={() => {
+                setModalCaseBriefing({ open: false, content: '' });
+                if (round === 1) {
+                  executeAlfredTurn(1);
+                }
+              }}
+              className="absolute top-4 right-5 text-2xl text-stone-400 hover:text-red-700 font-bold cursor-pointer"
             >
               ✕
             </span>
             <div
-              className="overflow-y-auto pr-1 text-sm text-stone-200"
+              className="overflow-y-auto pr-1 text-sm text-stone-900"
               dangerouslySetInnerHTML={{ __html: modalCaseBriefing.content }}
             />
             <button
-              className="btn btn-gold !mt-4 !py-3 text-base flex-shrink-0 uppercase font-bold tracking-wider"
-              onClick={() => setModalCaseBriefing({ open: false, content: '' })}
+              className="btn btn-gold !mt-4 !py-3 text-base flex-shrink-0 uppercase font-bold tracking-wider cursor-pointer shadow-md"
+              onClick={() => {
+                setModalCaseBriefing({ open: false, content: '' });
+                if (round === 1) {
+                  executeAlfredTurn(1);
+                }
+              }}
             >
-              Close & Begin Investigation
+              Close & Begin Investigation ➔
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 16B. INSPECTOR FORD WIRE CONSULTATION & LOAN MODAL */}
+      {modalCallFord && (
+        <div className="modal-bg !flex !z-[9999]">
+          <div className="notebook-content relative !h-auto max-h-[85vh] text-stone-900 !bg-[#fdfaf5] border-2 border-[#8b6e2d] shadow-2xl p-5 sm:p-6 text-left">
+            <span
+              onClick={() => {
+                setModalCallFord(false);
+                setFordAdviceResult(null);
+              }}
+              className="absolute top-4 right-5 text-2xl text-stone-500 hover:text-red-700 font-bold cursor-pointer"
+            >
+              ✕
+            </span>
+            <div className="text-center border-b-2 border-[#8b6e2d] pb-2 mb-4">
+              <span className="inline-block bg-[#f5eedf] text-[#8b6e2d] border border-[#8b6e2d]/60 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-0.5 rounded mb-1">
+                PRECINCT DIRECT WIRE
+              </span>
+              <h2 className="font-serif text-2xl font-bold uppercase text-stone-900">
+                Call Inspector Ford
+              </h2>
+              <p className="text-xs italic text-stone-600">
+                Senior Forensic Deduction & Discretionary Contingency
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {/* Card 1: Forensic Deduction Lead */}
+              <div className="bg-[#faf6ee] border-2 border-[#8b6e2d]/70 rounded-lg p-3.5 shadow-xs">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">🕵️‍♂️</span>
+                  <strong className="font-serif text-base text-stone-900">
+                    Forensic Deduction Consultation
+                  </strong>
+                </div>
+                <p className="text-xs text-stone-600 mb-2.5 font-sans leading-relaxed">
+                  Stuck on contradictory alibis or missing murder weapons? Chief Inspector Ford will review precinct wiretaps and provide a verified deduction lead.
+                </p>
+                {fordAdviceResult ? (
+                  <div
+                    className="bg-[#fff9ea] border border-[#8b6e2d] p-3 rounded text-xs font-serif italic text-stone-900 leading-relaxed mb-2.5"
+                    dangerouslySetInnerHTML={{ __html: fordAdviceResult }}
+                  />
+                ) : null}
+                <button
+                  className="w-full bg-[#fdfbf7] hover:bg-[#faecd0] active:bg-[#f5eedf] border border-[#8b6e2d] text-[#8b0000] font-serif font-bold text-xs py-2.5 px-3 rounded shadow-xs transition-colors flex items-center justify-between cursor-pointer"
+                  onClick={handleRequestFordAdvice}
+                >
+                  <span>📞 Request Forensic Deduction Lead</span>
+                  <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-red-100 text-red-900 border border-red-300">
+                    -75 Pts
+                  </span>
+                </button>
+              </div>
+
+              {/* Card 2: Emergency Discretionary Advance */}
+              <div className="bg-[#faf6ee] border-2 border-[#8b6e2d]/70 rounded-lg p-3.5 shadow-xs">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">💵</span>
+                  <strong className="font-serif text-base text-stone-900">
+                    Precinct Discretionary Advance
+                  </strong>
+                </div>
+                <p className="text-xs text-stone-600 mb-2.5 font-sans leading-relaxed">
+                  Depleted funds to bribe servants or canvass key rooms? Borrow $100 emergency cash from Inspector Ford. Incurs a service reprimand penalty.
+                </p>
+                <button
+                  className="w-full bg-[#fdfbf7] hover:bg-[#faecd0] active:bg-[#f5eedf] border border-[#8b6e2d] text-emerald-900 font-serif font-bold text-xs py-2.5 px-3 rounded shadow-xs transition-colors flex items-center justify-between cursor-pointer"
+                  onClick={() => {
+                    setModalCallFord(false);
+                    handleRequestFordLoan();
+                  }}
+                >
+                  <span>💵 Borrow $100 Emergency Advance</span>
+                  <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                    -150 Pts
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <button
+              className="btn btn-crimson !mt-4 !py-2.5 w-full text-sm font-serif font-bold uppercase tracking-wider"
+              onClick={() => {
+                setModalCallFord(false);
+                setFordAdviceResult(null);
+              }}
+            >
+              Hang Up Wire
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 16C. ALFRED'S TURN & PHYSICAL BOARD ACTION MODAL */}
+      {modalAlfredTurn && modalAlfredTurn.open && (
+        <div className="modal-bg !flex !z-[99999] transition-opacity duration-300">
+          <div className="bg-[#fcfaf7] border-2 border-[#8b6e2d] p-5 sm:p-6 rounded-xl shadow-2xl max-w-md w-full text-stone-900 relative overflow-hidden animate-in fade-in zoom-in-95">
+            {/* Top Telegram Header */}
+            <div className="text-center border-b-2 border-[#8b6e2d] pb-3 mb-3">
+              <div className="inline-block bg-[#f5eedf] text-[#8b6e2d] border border-[#8b6e2d]/60 text-[10px] font-mono font-bold tracking-widest uppercase px-3 py-1 rounded-full mb-1.5">
+                SCOTLAND YARD TELEGRAPH • OPENING MOVE
+              </div>
+              <h2 className="font-serif text-2xl font-black text-stone-900 uppercase tracking-wide">
+                Detective Alfred Moves First
+              </h2>
+              <span className="text-xs font-serif italic text-stone-600">
+                Round {modalAlfredTurn.round} Shift Commencing
+              </span>
+            </div>
+
+            <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+              {/* PRIMARY PHYSICAL PAWN MOVEMENT CALLOUT */}
+              <div className="bg-[#fff9ea] border-2 border-[#8b6e2d] rounded-lg p-3.5 shadow-xs text-left">
+                <div className="flex items-center gap-2 mb-1.5 text-[#8b0000]">
+                  <Footprints className="w-5 h-5 text-[#8b0000] anim-step-walk" />
+                  <span className="font-serif font-black text-sm uppercase tracking-wider text-[#8b0000]">
+                    👉 Physical Board Action:
+                  </span>
+                </div>
+                <p className="font-serif text-sm text-stone-900 leading-relaxed">
+                  Move Detective Alfred's rival pawn on your physical mansion board from the{' '}
+                  <strong className="text-stone-950 underline decoration-[#8b6e2d] decoration-2">
+                    {modalAlfredTurn.fromRoom}
+                  </strong>{' '}
+                  to the{' '}
+                  <strong className="text-[#8b0000] font-bold text-base uppercase bg-[#f5eedf] px-1.5 py-0.5 rounded border border-[#8b6e2d]/40">
+                    {modalAlfredTurn.toRoom}
+                  </strong>.
+                </p>
+                <div className="mt-2 text-[11px] text-stone-600 italic">
+                  (Alfred investigates first each round. Department regulations strictly forbid sharing the same room.)
+                </div>
+              </div>
+
+              {/* SABOTAGE TRAP WARNING */}
+              {modalAlfredTurn.trapTriggered && (
+                <div className="bg-red-50 border-2 border-red-600 rounded-lg p-3 text-left shadow-xs">
+                  <div className="flex items-center gap-2 mb-1 text-red-900">
+                    <span className="text-lg">💥</span>
+                    <strong className="font-serif text-sm uppercase font-bold tracking-wide">
+                      Sabotage Trap Detonated!
+                    </strong>
+                  </div>
+                  <p className="text-xs text-red-950 font-serif leading-relaxed">
+                    {modalAlfredTurn.trapMsg ||
+                      `Alfred blundered into your concealed sabotage tripwire in the ${modalAlfredTurn.toRoom}! The explosion halted his search (-50 Alfred Score points).`}
+                  </p>
+                </div>
+              )}
+
+              {/* POLICE TAPE WARNING */}
+              {modalAlfredTurn.tapeTriggered && (
+                <div className="bg-amber-50 border-2 border-amber-600 rounded-lg p-3 text-left shadow-xs">
+                  <div className="flex items-center gap-2 mb-1 text-amber-900">
+                    <span className="text-lg">🚧</span>
+                    <strong className="font-serif text-sm uppercase font-bold tracking-wide">
+                      Police Barricade Breached!
+                    </strong>
+                  </div>
+                  <p className="text-xs text-amber-950 font-serif leading-relaxed">
+                    {modalAlfredTurn.tapeMsg ||
+                      `Detective Alfred attempted to enter the ${modalAlfredTurn.toRoom}, breaching the yellow Scotland Yard police tape you deployed!`}
+                  </p>
+                </div>
+              )}
+
+              {/* RIVAL WARRANT WARNING */}
+              {modalAlfredTurn.warrantFiled && (
+                <div className="bg-blue-50 border-2 border-blue-600 rounded-lg p-3 text-left shadow-xs">
+                  <div className="flex items-center gap-2 mb-1 text-blue-900">
+                    <span className="text-lg">📜</span>
+                    <strong className="font-serif text-sm uppercase font-bold tracking-wide">
+                      Rival Search Warrant Filed!
+                    </strong>
+                  </div>
+                  <p className="text-xs text-blue-950 font-serif leading-relaxed">
+                    {modalAlfredTurn.warrantMsg ||
+                      `Detective Alfred officially filed an expedited magistrate search warrant for the ${modalAlfredTurn.toRoom}! (+60 Alfred Merit Points)`}
+                  </p>
+                </div>
+              )}
+
+              {/* MAGISTRATE JUDGE RESULTS FROM PREVIOUS ROUND SEARCH REPORT */}
+              {modalAlfredTurn.judgeResult && (
+                <div
+                  className={`border-2 rounded-lg p-3 text-left shadow-xs ${
+                    modalAlfredTurn.judgeResult.approved
+                      ? 'bg-emerald-50 border-emerald-600 text-emerald-950'
+                      : 'bg-stone-100 border-red-500 text-stone-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">⚖️</span>
+                    <strong className="font-serif text-sm uppercase font-bold tracking-wide">
+                      Magistrate Court Verdict: {modalAlfredTurn.judgeResult.approved ? 'Warrant Approved!' : 'Warrant Dismissed!'}
+                    </strong>
+                  </div>
+                  <p className="text-xs font-serif leading-relaxed">
+                    {modalAlfredTurn.judgeResult.desc}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* ACKNOWLEDGE BUTTON */}
+            <button
+              className="btn btn-gold !mt-4 !py-3 w-full text-sm sm:text-base font-serif font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-md cursor-pointer hover:scale-101 transition-transform"
+              onClick={handleAcknowledgeAlfredTurn}
+            >
+              <span>✓ Physical Pawn Moved — Begin Round {modalAlfredTurn.round} (8 AP)</span>
+              <span>➔</span>
             </button>
           </div>
         </div>
